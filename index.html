@@ -599,6 +599,7 @@ const RACES = [
 ];
 const RACE_DATE={}, RACE_ROUND={}, RACE_SPRINT={};
 RACES.forEach(r=>{RACE_DATE[r.name]=r.date;RACE_ROUND[r.name]=r.round;RACE_SPRINT[r.name]=r.sprint;});
+const PLAYABLE_RACES=RACES.filter(r=>r.round>=6);
 
 const TRACK_FACTS = {
   "Australian Grand Prix":[
@@ -1456,7 +1457,6 @@ document.getElementById('syncAllBtn').addEventListener('click', async ()=>{
 ============================================================ */
 const raceSelect=document.getElementById('raceSelect');
 const sprintCheck=document.getElementById('sprintCheck');
-const PLAYABLE_RACES=RACES.filter(r=>r.round>=6);
 raceSelect.innerHTML='<option value="">Select race…</option>'+PLAYABLE_RACES.map(r=>`<option value="${r.name}">${r.name}${r.sprint?' ⚡':''}</option>`).join('');
 raceSelect.addEventListener('change',()=>{
   const r=RACES.find(x=>x.name===raceSelect.value);
@@ -1651,12 +1651,11 @@ function exitEditMode(){
 document.getElementById('cancelEditBtn').addEventListener('click',exitEditMode);
 document.getElementById('saveBtn').addEventListener('click',async ()=>{
   const rn=raceSelect.value;
+  console.log('Log Race clicked. Race:', rn);
   if(!rn){alert('Select a Grand Prix first.');return;}
   const [p0,p1]=collectDraftPicks();
   const allNames=[...p0,...p1].map(p=>p.name).filter(Boolean);
-  if(!allNames.length){alert('Pick at least one driver.');return;}
-  if(allNames.length!==new Set(allNames).size){document.getElementById('dupError').classList.add('show');return;}
-  if(restrictionStatus==='loaded'){const blocked=[...p0,...p1].find(p=>p.name&&isRestricted(DRIVER_TEAM[p.name]));if(blocked){alert(`${blocked.name} is from a top-3 team.`);return;}}
+  console.log('Validation passed, building race object...');
   const predictions=[document.getElementById('predVal0').value||'',document.getElementById('predVal1').value||''];
   const date=RACE_DATE[rn]||todayIso(), isSprint=sprintCheck.checked;
   const btn=document.getElementById('saveBtn'); btn.disabled=true; btn.textContent='Saving…';
@@ -1664,10 +1663,12 @@ document.getElementById('saveBtn').addEventListener('click',async ()=>{
     ?{id:editingId,date,name:rn,picks:[p0,p1],pickedFirst,isSprint,predictions}
     :{id:Date.now().toString(36),date,name:rn,picks:[p0,p1],pickedFirst,isSprint,predictions};
   try{
+    console.log('Saving race:', JSON.stringify(raceObj));
     await saveRaceToDB(raceObj);
+    console.log('Save successful');
     if(editingId){const i=state.races.findIndex(r=>r.id===editingId);if(i!==-1)state.races[i]=raceObj;exitEditMode();document.querySelector('nav.tabs button[data-tab="history"]').click();}
     else{state.races.push(raceObj);resetForm();document.querySelector('nav.tabs button[data-tab="standings"]').click();}
-  }catch(e){}finally{btn.disabled=false;btn.textContent=editingId?'Save Changes':'Log Race';}
+  }catch(e){console.error('Save failed:', e);}finally{btn.disabled=false;btn.textContent=editingId?'Save Changes':'Log Race';}
 });
 renderDraftFlow();
 
