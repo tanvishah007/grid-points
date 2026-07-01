@@ -822,9 +822,12 @@ async function saveRaceToDB(race){
     await sbPost('races', {
       id: race.id, date: race.date, name: race.name,
       picks: race.picks, picked_first: race.pickedFirst,
-      is_sprint: race.isSprint||false, unlocked: race.unlocked||false,
-      predictions: race.predictions||['','']
+      is_sprint: race.isSprint||false, unlocked: race.unlocked||false
     });
+    // Save predictions separately if they exist (avoids schema cache issues)
+    if(race.predictions && (race.predictions[0]||race.predictions[1])){
+      await sbPatch('races?id=eq.'+race.id, {predictions: race.predictions});
+    }
   } catch(e){
     console.error('saveRaceToDB failed:', e);
     showToast('Save failed: '+e.message);
@@ -1666,8 +1669,21 @@ document.getElementById('saveBtn').addEventListener('click',async ()=>{
     console.log('Saving race:', JSON.stringify(raceObj));
     await saveRaceToDB(raceObj);
     console.log('Save successful');
-    if(editingId){const i=state.races.findIndex(r=>r.id===editingId);if(i!==-1)state.races[i]=raceObj;exitEditMode();document.querySelector('nav.tabs button[data-tab="history"]').click();}
-    else{state.races.push(raceObj);resetForm();document.querySelector('nav.tabs button[data-tab="standings"]').click();}
+    if(editingId){
+      const i=state.races.findIndex(r=>r.id===editingId);
+      if(i!==-1)state.races[i]=raceObj;
+      btn.textContent='Saved ✓';
+      setTimeout(()=>{ exitEditMode(); document.querySelector('nav.tabs button[data-tab="history"]').click(); }, 1000);
+    } else {
+      state.races.push(raceObj);
+      btn.textContent='Saved ✓';
+      btn.style.background='var(--green)';
+      setTimeout(()=>{
+        btn.style.background='';
+        resetForm();
+        document.querySelector('nav.tabs button[data-tab="standings"]').click();
+      }, 1000);
+    }
   }catch(e){console.error('Save failed:', e);}finally{btn.disabled=false;btn.textContent=editingId?'Save Changes':'Log Race';}
 });
 renderDraftFlow();
