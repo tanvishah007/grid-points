@@ -769,9 +769,15 @@ async function sbGet(path){
 }
 async function sbPost(path, body){
   const r = await fetch(SB_URL+'/rest/v1/'+path, {
-    method:'POST', headers:{...SB_HEADERS,'Prefer':'resolution=merge-duplicates'}, body:JSON.stringify(body)
+    method:'POST',
+    headers:{...SB_HEADERS,'Prefer':'return=minimal,resolution=merge-duplicates'},
+    body:JSON.stringify(body)
   });
-  if(!r.ok) throw new Error('SB POST '+r.status);
+  if(!r.ok){
+    const txt = await r.text().catch(()=>'');
+    console.error('SB POST failed', r.status, txt);
+    throw new Error('SB POST '+r.status+': '+txt);
+  }
 }
 async function sbPatch(path, body){
   const r = await fetch(SB_URL+'/rest/v1/'+path, {
@@ -818,7 +824,11 @@ async function saveRaceToDB(race){
       is_sprint: race.isSprint||false, unlocked: race.unlocked||false,
       predictions: race.predictions||['','']
     });
-  } catch(e){ showToast('Could not save race.'); throw e; }
+  } catch(e){
+    console.error('saveRaceToDB failed:', e);
+    showToast('Save failed: '+e.message);
+    throw e;
+  }
 }
 
 async function deleteRaceFromDB(id){
