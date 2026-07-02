@@ -458,7 +458,6 @@ main{padding:14px 14px 90px;max-width:720px;margin:0 auto;}
   <div id="avgContainer"></div>
   <div id="hitRateContainer"></div>
   <div id="circuitFormContainer"></div>
-  <div id="projContainer"></div>
   <div id="swingContainer"></div>
   <div id="nextRaceContainer"></div>
 </section>
@@ -814,7 +813,7 @@ async function loadFromDB(){
   }
   showLoader(false);
   // Update UI with loaded state
-  updateHeadings(); renderStandings(); renderHistory();
+  updateHeadings(); renderStandings(); renderHistory(); populateRaceSelect();
 }
 
 async function saveRaceToDB(race){
@@ -957,7 +956,6 @@ function renderStandings(){
   renderHitRate(n0,n1);
   renderCircuitForm(n0,n1);
   renderStreak(n0,n1);
-  renderProjection(n0,n1);
   renderBiggestSwing(n0,n1);
   renderNextRace();
   renderTrophy(n0,n1,t0,t1);
@@ -1113,8 +1111,9 @@ function renderHitRate(n0,n1){
     let total=0, inPoints=0;
     synced.forEach(r=>{
       r.picks[personIdx].forEach(d=>{
-        if(!d.pos||d.pos==='DNF') return;
-        total++;
+        if(!d.pos) return; // no result at all — skip
+        total++; // DNF counts as a pick that didn't score
+        if(d.pos==='DNF') return;
         const p=parseInt(d.pos,10);
         if(p>=1&&p<=10) inPoints++;
       });
@@ -1359,7 +1358,11 @@ function getAutoFirstPicker(){
   const raceName = last.name.replace(' Grand Prix','');
   if(p0 > p1) return {player:0, pts0:p0, pts1:p1, margin:p0-p1, race:raceName};
   if(p1 > p0) return {player:1, pts0:p0, pts1:p1, margin:p1-p0, race:raceName};
-  return {player: 0, reason: 'tie', race: raceName}; // tie \u2014 default to p0
+  // Tie in last race — use overall championship leader as tie-break
+  const [t0,t1] = totals();
+  if(t0 > t1) return {player:0, reason:'tie-champ', race:raceName};
+  if(t1 > t0) return {player:1, reason:'tie-champ', race:raceName};
+  return {player: 0, reason: 'tie', race: raceName};
 }
 
 function renderAutoFirstPicker(){
@@ -1376,9 +1379,16 @@ function renderAutoFirstPicker(){
     return;
   }
   if(result.reason === 'tie'){
-    el.innerHTML = `<b>${esc(result.race)}</b> was a tie \u2014 choose who picks first.`;
+    el.innerHTML = `<b>${esc(result.race)}</b> was a tie \u2014 choosing who picks first based on overall standings.`;
     el.classList.add('show');
     setPickFirst(0);
+    return;
+  }
+  if(result.reason === 'tie-champ'){
+    const n = result.player===0 ? 'Tanvi' : 'Rushabh';
+    el.innerHTML = `<b>${esc(result.race)}</b> was a tie \u2014 <b>${esc(n)}</b> picks first (leads the championship).`;
+    el.classList.add('show');
+    setPickFirst(result.player);
     return;
   }
   // Clear winner
@@ -1460,7 +1470,13 @@ document.getElementById('syncAllBtn').addEventListener('click', async ()=>{
 ============================================================ */
 const raceSelect=document.getElementById('raceSelect');
 const sprintCheck=document.getElementById('sprintCheck');
-raceSelect.innerHTML='<option value="">Select race…</option>'+PLAYABLE_RACES.map(r=>`<option value="${r.name}">${r.name}${r.sprint?' ⚡':''}</option>`).join('');
+function populateRaceSelect(){
+  const loggedNames = new Set(state.races.map(r=>r.name));
+  const available = PLAYABLE_RACES.filter(r=>!loggedNames.has(r.name));
+  raceSelect.innerHTML='<option value="">Select race…</option>'+
+    available.map(r=>`<option value="${r.name}">${r.name}${r.sprint?' ⚡':''}</option>`).join('');
+}
+populateRaceSelect();
 raceSelect.addEventListener('change',()=>{
   const r=RACES.find(x=>x.name===raceSelect.value);
   if(r) sprintCheck.checked=r.sprint;
@@ -1633,7 +1649,12 @@ function resetForm(){
   renderAutoFirstPicker();
 }
 function enterEditMode(race){
-  editingId=race.id; raceSelect.value=race.name; sprintCheck.checked=!!race.isSprint;
+  editingId=race.id; 
+  // Temporarily add this race back to dropdown if it was filtered out
+  const loggedNames = new Set(state.races.filter(r=>r.id!==race.id).map(r=>r.name));
+  const available = PLAYABLE_RACES.filter(r=>!loggedNames.has(r.name));
+  raceSelect.innerHTML='<option value="">Select race…</option>'+available.map(r=>`<option value="${r.name}">${r.name}${r.sprint?' ⚡':''}</option>`).join('');
+  raceSelect.value=race.name; sprintCheck.checked=!!race.isSprint;
   const order=draftOrder(race.pickedFirst||0), p0=race.picks[0]||[], p1=race.picks[1]||[], ctr=[0,0];
   order.forEach((o,si)=>{const arr=o.player===0?p0:p1; draftPicks[si]=arr[ctr[o.player]]?.name||''; ctr[o.player]++;});
   pickedFirst=race.pickedFirst||0;
@@ -1673,13 +1694,14 @@ document.getElementById('saveBtn').addEventListener('click',async ()=>{
       const i=state.races.findIndex(r=>r.id===editingId);
       if(i!==-1)state.races[i]=raceObj;
       btn.textContent='Saved ✓';
-      setTimeout(()=>{ exitEditMode(); document.querySelector('nav.tabs button[data-tab="history"]').click(); }, 1000);
+      setTimeout(()=>{ populateRaceSelect(); exitEditMode(); document.querySelector('nav.tabs button[data-tab="history"]').click(); }, 1000);
     } else {
       state.races.push(raceObj);
       btn.textContent='Saved ✓';
       btn.style.background='var(--green)';
       setTimeout(()=>{
         btn.style.background='';
+        populateRaceSelect();
         resetForm();
         document.querySelector('nav.tabs button[data-tab="standings"]').click();
       }, 1000);
@@ -1752,7 +1774,7 @@ function renderHistory(){
       e.stopPropagation();
       if(confirm('Delete this race? Cannot be undone.')){
         const delId=b.dataset.del;
-        try{await deleteRaceFromDB(delId);state.races=state.races.filter(r=>r.id!==delId);renderHistory();renderStandings();}catch(e){}
+        try{await deleteRaceFromDB(delId);state.races=state.races.filter(r=>r.id!==delId);populateRaceSelect();renderHistory();renderStandings();}catch(e){}
       }
     });
   });
