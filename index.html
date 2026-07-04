@@ -340,6 +340,20 @@ main{padding:14px 14px 90px;max-width:720px;margin:0 auto;}
 .circuit-edge{font-size:11px;color:var(--faint);margin-top:8px;}
 .circuit-edge b{color:var(--white);}
 
+/* DRAFT WAITING */
+.waiting-card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:28px 20px;text-align:center;margin-top:14px;}
+.waiting-spinner{width:32px;height:32px;border:3px solid var(--line);border-top-color:var(--red);border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 14px;}
+.waiting-title{font-size:15px;font-weight:700;margin-bottom:6px;}
+.waiting-sub{font-size:13px;color:var(--faint);}
+.draft-progress{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin-bottom:14px;}
+.draft-progress-title{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--faint);font-weight:700;margin-bottom:10px;}
+.draft-slot-row{display:flex;align-items:center;gap:10px;padding:6px 0;font-size:13px;}
+.draft-slot-row+.draft-slot-row{border-top:1px solid var(--line);}
+.slot-who{width:60px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;flex-shrink:0;}
+.slot-driver{flex:1;color:var(--gray);}
+.slot-driver.filled{color:var(--white);font-weight:600;}
+.slot-status{font-size:11px;color:var(--faint);}
+
 /* DRAFT FLOW */
 .draft-step{margin-bottom:12px;}
 .draft-step-header{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:8px 8px 0 0;border:1px solid var(--line);border-bottom:none;}
@@ -464,60 +478,77 @@ main{padding:14px 14px 90px;max-width:720px;margin:0 auto;}
 
 <!-- LOG RACE -->
 <section id="tab-add" style="display:none;">
-  <div class="editing-bar" id="editingBar">
-    <span>Editing logged race</span>
-    <button id="cancelEditBtn">Cancel</button>
-  </div>
-  <div class="last-pick-note" id="lastPickNote"></div>
-  <div class="restriction-banner" id="restrictionBanner"></div>
-
-  <div class="card">
-    <div class="field" style="margin-bottom:12px;">
-      <label>Grand Prix</label>
-      <select id="raceSelect"></select>
-    </div>
-    <div class="sprint-toggle">
-      <label for="sprintCheck">Sprint weekend entry <span class="sprint-badge">Sprint</span></label>
-      <input type="checkbox" id="sprintCheck">
-    </div>
-    <div class="note">Points: 8-7-6-5-4-3-2-1 for P1-P8. For sprint races only.</div>
-  </div>
-
-  <div class="card" id="predictionsCard" style="display:none;">
-    <div class="card-head" style="margin-bottom:8px;">&#127919; Race winner predictions <span style="font-size:9px;background:rgba(216,154,28,.2);color:var(--amber);padding:2px 7px;border-radius:10px;margin-left:6px;letter-spacing:.5px;">+5 PTS IF CORRECT</span></div>
-    <div class="note" style="margin-bottom:12px;">Lock in before qualifying. Same driver allowed for both.</div>
-    <div class="field" style="margin-bottom:10px;">
-      <label>Tanvi&#8217;s prediction</label>
-      <button type="button" class="driver-trigger" id="predTrigger0">
-        <span class="trigger-text" style="color:var(--faint);">Select predicted winner&#8230;</span>
-        <span class="trigger-arrow">&#9662;</span>
-      </button>
-      <input type="hidden" id="predVal0">
-    </div>
-    <div class="field" style="margin-bottom:0;">
-      <label>Rushabh&#8217;s prediction</label>
-      <button type="button" class="driver-trigger" id="predTrigger1">
-        <span class="trigger-text" style="color:var(--faint);">Select predicted winner&#8230;</span>
-        <span class="trigger-arrow">&#9662;</span>
-      </button>
-      <input type="hidden" id="predVal1">
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="field" style="margin-bottom:0;">
-      <label>Who picks first?</label>
-      <div class="toggle-row">
-        <button type="button" class="tog-btn active c1" id="pfBtn0">Tanvi</button>
-        <button type="button" class="tog-btn c2" id="pfBtn1">Rushabh</button>
+  <!-- Identity prompt — shown on first open -->
+  <div id="identityPrompt" style="display:none;">
+    <div class="card" style="text-align:center;padding:24px 16px;">
+      <div style="font-size:22px;margin-bottom:8px;">👋</div>
+      <div style="font-size:16px;font-weight:700;margin-bottom:6px;">Who are you?</div>
+      <div class="note" style="margin-bottom:16px;">This is saved on your device so you only see your own steps.</div>
+      <div style="display:flex;gap:10px;">
+        <button class="submit-btn" style="background:var(--p1);" onclick="setIdentity(0)">Tanvi</button>
+        <button class="submit-btn" style="background:var(--p2);" onclick="setIdentity(1)">Rushabh</button>
       </div>
     </div>
   </div>
 
-  <div id="draftFlow"></div>
+  <!-- Main draft UI — shown after identity is set -->
+  <div id="draftUI" style="display:none;">
+    <div class="editing-bar" id="editingBar">
+      <span>Editing logged race</span>
+      <button id="cancelEditBtn">Cancel</button>
+    </div>
+    <div class="last-pick-note" id="lastPickNote"></div>
+    <div class="restriction-banner" id="restrictionBanner"></div>
 
-  <div class="inline-error" id="dupError">This driver is already picked.</div>
-  <button class="submit-btn" id="saveBtn">Log Race</button>
+    <!-- Step 1: Race setup (anyone can start) -->
+    <div id="draftStep-setup">
+      <div class="card">
+        <div class="field" style="margin-bottom:12px;">
+          <label>Grand Prix</label>
+          <select id="raceSelect"></select>
+        </div>
+        <div class="note" style="color:var(--faint);">Sprint races use 8-7-6-5-4-3-2-1 points for P1-P8.</div>
+      </div>
+
+      <div class="card" id="predictionsCard" style="display:none;">
+        <div class="card-head" style="margin-bottom:8px;">&#127919; Race winner predictions <span style="font-size:9px;background:rgba(216,154,28,.2);color:var(--amber);padding:2px 7px;border-radius:10px;margin-left:6px;letter-spacing:.5px;">+5 PTS IF CORRECT</span></div>
+        <div class="note" style="margin-bottom:12px;">Lock in before qualifying. Same driver allowed for both.</div>
+        <div class="field" style="margin-bottom:10px;">
+          <label>Tanvi&#8217;s prediction</label>
+          <button type="button" class="driver-trigger" id="predTrigger0">
+            <span class="trigger-text" style="color:var(--faint);">Select predicted winner&#8230;</span>
+            <span class="trigger-arrow">&#9662;</span>
+          </button>
+          <input type="hidden" id="predVal0">
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label>Rushabh&#8217;s prediction</label>
+          <button type="button" class="driver-trigger" id="predTrigger1">
+            <span class="trigger-text" style="color:var(--faint);">Select predicted winner&#8230;</span>
+            <span class="trigger-arrow">&#9662;</span>
+          </button>
+          <input type="hidden" id="predVal1">
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="field" style="margin-bottom:0;">
+          <label>Who picks first?</label>
+          <div id="pickFirstDisplay" style="font-size:15px;font-weight:700;padding:11px 12px;background:var(--panel2);border:1px solid var(--line);border-radius:6px;"></div>
+        </div>
+      </div>
+      <button class="submit-btn" id="startDraftBtn">Start Draft</button>
+    </div>
+
+    <!-- Step 2: Active draft — shows your slots or waiting screen -->
+    <div id="draftStep-picks" style="display:none;">
+      <div class="card" id="draftRaceInfo"></div>
+      <div id="draftPickArea"></div>
+      <div class="inline-error" id="dupError">This driver is already picked.</div>
+      <button class="submit-btn" id="submitPicksBtn" style="display:none;">Submit My Picks</button>
+      <div id="draftWaiting" style="display:none;"></div>
+    </div>
+  </div>
 </section>
 
 <!-- HISTORY -->
@@ -573,31 +604,37 @@ function pts(pos, isSprint){
 }
 
 const RACES = [
-  {name:"Australian Grand Prix",      date:"2026-03-08", round:1,  sprint:false},
-  {name:"Chinese Grand Prix",         date:"2026-03-15", round:2,  sprint:true},
-  {name:"Japanese Grand Prix",        date:"2026-03-29", round:3,  sprint:false},
-  {name:"Miami Grand Prix",           date:"2026-05-03", round:4,  sprint:true},
-  {name:"Canadian Grand Prix",        date:"2026-05-24", round:5,  sprint:true},
-  {name:"Monaco Grand Prix",          date:"2026-06-07", round:6,  sprint:false},
-  {name:"Barcelona-Catalunya Grand Prix",date:"2026-06-14",round:7,sprint:false},
-  {name:"Austrian Grand Prix",        date:"2026-06-28", round:8,  sprint:false},
-  {name:"British Grand Prix",         date:"2026-07-05", round:9,  sprint:true},
-  {name:"Belgian Grand Prix",         date:"2026-07-19", round:10, sprint:false},
-  {name:"Hungarian Grand Prix",       date:"2026-07-26", round:11, sprint:false},
-  {name:"Dutch Grand Prix",           date:"2026-08-23", round:12, sprint:true},
-  {name:"Italian Grand Prix",         date:"2026-09-06", round:13, sprint:false},
-  {name:"Spanish Grand Prix (Madrid)",date:"2026-09-13", round:14, sprint:false},
-  {name:"Azerbaijan Grand Prix",      date:"2026-09-26", round:15, sprint:false},
-  {name:"Singapore Grand Prix",       date:"2026-10-11", round:16, sprint:true},
-  {name:"United States Grand Prix",   date:"2026-10-25", round:17, sprint:false},
-  {name:"Mexico City Grand Prix",     date:"2026-11-01", round:18, sprint:false},
-  {name:"São Paulo Grand Prix",       date:"2026-11-08", round:19, sprint:false},
-  {name:"Las Vegas Grand Prix",       date:"2026-11-21", round:20, sprint:false},
-  {name:"Qatar Grand Prix",           date:"2026-11-29", round:21, sprint:false},
-  {name:"Abu Dhabi Grand Prix",       date:"2026-12-06", round:22, sprint:false}
+  {name:"Australian Grand Prix",               date:"2026-03-08", round:1,  isSprint:false},
+  {name:"Chinese Grand Prix — Sprint",         date:"2026-03-14", round:2,  isSprint:true},
+  {name:"Chinese Grand Prix",                  date:"2026-03-15", round:2,  isSprint:false},
+  {name:"Japanese Grand Prix",                 date:"2026-03-29", round:3,  isSprint:false},
+  {name:"Miami Grand Prix — Sprint",           date:"2026-05-02", round:4,  isSprint:true},
+  {name:"Miami Grand Prix",                    date:"2026-05-03", round:4,  isSprint:false},
+  {name:"Canadian Grand Prix — Sprint",        date:"2026-05-23", round:5,  isSprint:true},
+  {name:"Canadian Grand Prix",                 date:"2026-05-24", round:5,  isSprint:false},
+  {name:"Monaco Grand Prix",                   date:"2026-06-07", round:6,  isSprint:false},
+  {name:"Barcelona-Catalunya Grand Prix",      date:"2026-06-14", round:7,  isSprint:false},
+  {name:"Austrian Grand Prix",                 date:"2026-06-28", round:8,  isSprint:false},
+  {name:"British Grand Prix — Sprint",         date:"2026-07-04", round:9,  isSprint:true},
+  {name:"British Grand Prix",                  date:"2026-07-05", round:9,  isSprint:false},
+  {name:"Belgian Grand Prix",                  date:"2026-07-19", round:10, isSprint:false},
+  {name:"Hungarian Grand Prix",                date:"2026-07-26", round:11, isSprint:false},
+  {name:"Dutch Grand Prix — Sprint",           date:"2026-08-22", round:12, isSprint:true},
+  {name:"Dutch Grand Prix",                    date:"2026-08-23", round:12, isSprint:false},
+  {name:"Italian Grand Prix",                  date:"2026-09-06", round:13, isSprint:false},
+  {name:"Spanish Grand Prix (Madrid)",         date:"2026-09-13", round:14, isSprint:false},
+  {name:"Azerbaijan Grand Prix",               date:"2026-09-26", round:15, isSprint:false},
+  {name:"Singapore Grand Prix — Sprint",       date:"2026-10-10", round:16, isSprint:true},
+  {name:"Singapore Grand Prix",                date:"2026-10-11", round:16, isSprint:false},
+  {name:"United States Grand Prix",            date:"2026-10-25", round:17, isSprint:false},
+  {name:"Mexico City Grand Prix",              date:"2026-11-01", round:18, isSprint:false},
+  {name:"São Paulo Grand Prix",                date:"2026-11-08", round:19, isSprint:false},
+  {name:"Las Vegas Grand Prix",                date:"2026-11-21", round:20, isSprint:false},
+  {name:"Qatar Grand Prix",                    date:"2026-11-29", round:21, isSprint:false},
+  {name:"Abu Dhabi Grand Prix",                date:"2026-12-06", round:22, isSprint:false}
 ];
-const RACE_DATE={}, RACE_ROUND={}, RACE_SPRINT={};
-RACES.forEach(r=>{RACE_DATE[r.name]=r.date;RACE_ROUND[r.name]=r.round;RACE_SPRINT[r.name]=r.sprint;});
+const RACE_DATE={}, RACE_ROUND={}, RACE_IS_SPRINT={};
+RACES.forEach(r=>{RACE_DATE[r.name]=r.date;RACE_ROUND[r.name]=r.round;RACE_IS_SPRINT[r.name]=r.isSprint;});
 const PLAYABLE_RACES=RACES.filter(r=>r.round>=6);
 
 const TRACK_FACTS = {
@@ -804,7 +841,7 @@ async function loadFromDB(){
     state.races = races.map(r=>({
       id: r.id, date: r.date, name: r.name,
       picks: r.picks || [[],[]], pickedFirst: r.picked_first,
-      isSprint: r.is_sprint || false, unlocked: r.unlocked || false,
+      isSprint: r.is_sprint || RACE_IS_SPRINT[r.name] || false, unlocked: r.unlocked || false,
       predictions: r.predictions || ['','']
     }));
   } catch(e){
@@ -821,7 +858,7 @@ async function saveRaceToDB(race){
     await sbPost('races', {
       id: race.id, date: race.date, name: race.name,
       picks: race.picks, picked_first: race.pickedFirst,
-      is_sprint: race.isSprint||false, unlocked: race.unlocked||false
+      is_sprint: RACE_IS_SPRINT[race.name]||false, unlocked: race.unlocked||false
     });
     // Save predictions separately if they exist (avoids schema cache issues)
     if(race.predictions && (race.predictions[0]||race.predictions[1])){
@@ -861,8 +898,8 @@ function dn(n,fb){return(n&&n.trim())?n.trim():fb;}
 function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
 function racePts(race){
   const base=[
-    race.picks[0].reduce((s,d)=>s+pts(d.pos,race.isSprint),0),
-    race.picks[1].reduce((s,d)=>s+pts(d.pos,race.isSprint),0)
+    race.picks[0].reduce((s,d)=>s+pts(d.pos,RACE_IS_SPRINT[race.name]),0),
+    race.picks[1].reduce((s,d)=>s+pts(d.pos,RACE_IS_SPRINT[race.name]),0)
   ];
   // Prediction bonus only applies from British GP (round 9) onwards
   if(RACE_ROUND[race.name]>=9){
@@ -1104,16 +1141,18 @@ function renderAvgPerRace(n0,n1,t0,t1){
 function renderHitRate(n0,n1){
   const el=document.getElementById('hitRateContainer');
   if(!el) return;
-  const synced=state.races.filter(r=>r.picks[0].some(d=>d.pos)||r.picks[1].some(d=>d.pos));
-  if(synced.length<2){el.innerHTML='';return;}
+  // Use all logged races — picks without results count as not in points
+  const allRaces=state.races;
+  if(allRaces.length<1){el.innerHTML='';return;}
+  const synced=allRaces; // renamed for minimal diff
 
   function calcHitRate(personIdx){
     let total=0, inPoints=0;
     synced.forEach(r=>{
       r.picks[personIdx].forEach(d=>{
-        if(!d.pos) return; // no result at all — skip
-        total++; // DNF counts as a pick that didn't score
-        if(d.pos==='DNF') return;
+        if(!d.name || d.name==='Unselected') return; // skip empty slots
+        total++; // every named pick counts, regardless of result
+        if(!d.pos || d.pos==='DNF') return; // no result or DNF = not in points
         const p=parseInt(d.pos,10);
         if(p>=1&&p<=10) inPoints++;
       });
@@ -1246,14 +1285,27 @@ function renderProjection(n0,n1){
 function renderBiggestSwing(n0,n1){
   const el=document.getElementById('swingContainer'); if(!el||state.races.length<2){if(el)el.innerHTML='';return;}
   let big=null,bigSwing=0,running=[0,0];
+  // Monaco excluded — all-team exception makes it an outlier for swing analysis
   [...state.races].sort((a,b)=>a.date?.localeCompare(b.date)).forEach(race=>{
-    const[p0,p1]=racePts(race); if(!p0&&!p1) return;
+    const[p0,p1]=racePts(race);
     const prev=running[0]-running[1]; running[0]+=p0; running[1]+=p1;
+    if(race.name==='Monaco Grand Prix') return; // excluded
+    if(!p0&&!p1) return;
     const sw=Math.abs((running[0]-running[1])-prev);
     if(sw>bigSwing){bigSwing=sw;big={race:race.name.replace(' Grand Prix',''),swing:sw,winner:p0>p1?n0:n1,margin:Math.abs(p0-p1)};}
   });
   if(!big||bigSwing<5){el.innerHTML='';return;}
-  el.innerHTML=`<div class="swing-card"><div class="swing-head">Biggest single-race swing</div><div class="swing-body"><div class="swing-icon">&#9889;</div><div class="swing-text"><div class="swing-race">${esc(big.race)}</div><div class="swing-detail">${esc(big.winner)} won by ${big.margin} pts &mdash; shifted lead by <b>${big.swing} pts</b></div></div><div class="swing-pts">+${big.swing}</div></div></div>`;
+  el.innerHTML=`<div class="swing-card">
+    <div class="swing-head">Biggest single-race swing <span style="font-weight:400;color:var(--faint);font-size:9px;margin-left:6px;">Monaco excluded</span></div>
+    <div class="swing-body">
+      <div class="swing-icon">&#9889;</div>
+      <div class="swing-text">
+        <div class="swing-race">${esc(big.race)}</div>
+        <div class="swing-detail">${esc(big.winner)} won by ${big.margin} pts &mdash; shifted lead by <b>${big.swing} pts</b></div>
+      </div>
+      <div class="swing-pts">+${big.swing}</div>
+    </div>
+  </div>`;
 }
 /* ============================================================
    SEASON TROPHY
@@ -1425,7 +1477,7 @@ function renderNextRace(){
   container.innerHTML=`
     <div class="next-card">
       <div class="next-header">
-        <div class="lbl">Next Race${next.sprint?' <span class="sprint-badge">Sprint</span>':''}</div>
+        <div class="lbl">Next Race${next.isSprint?' <span class="sprint-badge">Sprint</span>':''}</div>
       </div>
       <div class="next-body">
         <div class="next-title-row">
@@ -1458,7 +1510,8 @@ document.getElementById('syncAllBtn').addEventListener('click', async ()=>{
     const round=RACE_ROUND[r.name]; if(!round){fail++;continue;}
     try{const n=await fetchResults(r,round);if(n>0)ok++; await sleep(300);}catch(e){fail++;}
   }
-  await Promise.all(state.races.filter(r=>past.includes(r)).map(r=>saveRaceToDB(r))); renderStandings(); renderHistory();
+  for(const r of past){ await saveRaceToDB(r).catch(()=>{}); }
+  renderStandings(); renderHistory();
   statusEl.textContent=ok>0?`Synced ${ok} race${ok>1?'s':''}${fail>0?` (${fail} not available yet)`:''}`:
     'No results available yet — try again after the race.';
   statusEl.style.display='block';
@@ -1466,24 +1519,49 @@ document.getElementById('syncAllBtn').addEventListener('click', async ()=>{
 });
 
 /* ============================================================
+   IDENTITY — stored per device in localStorage
+============================================================ */
+let myIdentity = parseInt(localStorage.getItem('gp_identity')||'-1', 10); // 0=Tanvi, 1=Rushabh
+
+function setIdentity(idx){
+  myIdentity = idx;
+  localStorage.setItem('gp_identity', String(idx));
+  showDraftUI();
+}
+
+function showIdentityPrompt(){
+  document.getElementById('identityPrompt').style.display = 'block';
+  document.getElementById('draftUI').style.display = 'none';
+}
+
+function showDraftUI(){
+  document.getElementById('identityPrompt').style.display = 'none';
+  document.getElementById('draftUI').style.display = 'block';
+  renderAutoFirstPicker();
+  fetchTop3();
+  populateRaceSelect();
+  checkActiveDraft();
+}
+
+/* ============================================================
    RACE SELECT + SPRINT
 ============================================================ */
-const raceSelect=document.getElementById('raceSelect');
-const sprintCheck=document.getElementById('sprintCheck');
+const raceSelect = document.getElementById('raceSelect');
+// Sprint is determined by race name, not a checkbox
+
 function populateRaceSelect(){
+  if(!raceSelect) return;
   const loggedNames = new Set(state.races.map(r=>r.name));
   const available = PLAYABLE_RACES.filter(r=>!loggedNames.has(r.name));
   raceSelect.innerHTML='<option value="">Select race…</option>'+
-    available.map(r=>`<option value="${r.name}">${r.name}${r.sprint?' ⚡':''}</option>`).join('');
+    available.map(r=>`<option value="${r.name}">${r.name}</option>`).join('');
 }
-populateRaceSelect();
-raceSelect.addEventListener('change',()=>{
+
+raceSelect && raceSelect.addEventListener('change',()=>{
   const r=RACES.find(x=>x.name===raceSelect.value);
-  if(r) sprintCheck.checked=r.sprint;
-  // Predictions only from British Grand Prix (round 9) onwards
   const predCard=document.getElementById('predictionsCard');
   if(predCard) predCard.style.display=(r&&r.round>=9)?'block':'none';
-  renderRestrictionBanner(); renderDraftFlow();
+  renderRestrictionBanner();
 });
 
 /* ============================================================
@@ -1496,6 +1574,7 @@ function setupPredTrigger(tid,hid){
 }
 setupPredTrigger('predTrigger0','predVal0');
 setupPredTrigger('predTrigger1','predVal1');
+
 function setPredictionValues(preds){
   [0,1].forEach(i=>{
     const v=preds?.[i]||'';
@@ -1510,64 +1589,332 @@ function setPredictionValues(preds){
 /* ============================================================
    PICK FIRST
 ============================================================ */
-document.getElementById('pfBtn0').addEventListener('click',()=>setPickFirst(0));
-document.getElementById('pfBtn1').addEventListener('click',()=>setPickFirst(1));
 function setPickFirst(idx){
   pickedFirst=idx;
-  document.getElementById('pfBtn0').classList.toggle('active',idx===0);
-  document.getElementById('pfBtn1').classList.toggle('active',idx===1);
-  renderDraftFlow();
+  const el=document.getElementById('pickFirstDisplay');
+  if(!el) return;
+  const name=idx===0?'Tanvi':'Rushabh';
+  const col=idx===0?'var(--p1)':'var(--p2)';
+  el.innerHTML=`<span style="color:${col}">${name}</span>`;
 }
-setPickFirst(0);
+
 function renderLastPickNote(){
   const el=document.getElementById('lastPickNote');
+  if(!el) return;
   const sorted=[...state.races].sort((a,b)=>b.date?.localeCompare(a.date)||b.id?.localeCompare(a.id));
   const last=sorted[0];
-  if(!last||last.pickedFirst===undefined||last.pickedFirst===null){el.classList.remove('show');return;}
+  if(!last||last.pickedFirst===undefined){el.classList.remove('show');return;}
   el.innerHTML=`Last race — <b>${esc(last.pickedFirst===0?'Tanvi':'Rushabh')}</b> picked first.`;
   el.classList.add('show');
 }
 
 /* ============================================================
-   SNAKE DRAFT: first:1 | second:2 | first:2 | second:1
+   ASYNC DRAFT SYSTEM
+   Snake order: first:1 | second:2 | first:2 | second:1
+   Each person submits their slots independently.
+   Supabase draft_sessions table tracks state.
 ============================================================ */
-function draftOrder(fp){const s=1-fp;return [{player:fp},{player:s},{player:s},{player:fp},{player:fp},{player:s}];}
-function getAllDraftSelections(){return draftPicks.filter(v=>v);}
-function renderDraftFlow(){
-  const container=document.getElementById('draftFlow');
-  if(!container) return;
-  // Ensure draftPicks is always a valid 6-element array
-  if(!Array.isArray(draftPicks)||draftPicks.length!==6) draftPicks=['','','','','',''];
-  const order=draftOrder(pickedFirst);
-  const names=['Tanvi','Rushabh'], cols=['c1','c2'];
-  const steps=[{slots:[0],lbl:'picks 1 driver'},{slots:[1,2],lbl:'picks 2 drivers'},{slots:[3,4],lbl:'picks 2 drivers'},{slots:[5],lbl:'picks 1 driver'}];
-  container.innerHTML='';
-  steps.forEach(step=>{
-    const pidx=order[step.slots[0]].player;
-    const filled=step.slots.filter(si=>draftPicks[si]).length;
-    const allDone=filled===step.slots.length;
-    const sd=document.createElement('div'); sd.className='draft-step';
-    const hdr=document.createElement('div'); hdr.className=`draft-step-header ${allDone?'done':cols[pidx]}`;
-    hdr.innerHTML=`<div class="step-avatar ${allDone?'done':cols[pidx]}">${allDone?'&#10003;':names[pidx][0]}</div><div class="step-label">${esc(names[pidx])} <span style="font-weight:400;color:var(--faint)">${step.lbl}</span></div><div class="step-count">${filled}/${step.slots.length}</div>`;
-    sd.appendChild(hdr);
-    const body=document.createElement('div'); body.className='draft-step-body';
-    step.slots.forEach(si=>{const slot=document.createElement('div');slot.className='draft-pick-slot';slot.appendChild(makeDraftSlot(si,pidx));body.appendChild(slot);});
-    sd.appendChild(body); container.appendChild(sd);
+let activeDraft = null;    // current draft session from Supabase
+let pollTimer   = null;    // polling interval handle
+let myDraftPicks = {};     // {slotIdx: driverName} for MY current turn slots
+
+const DRAFT_ORDER_TEMPLATE = (fp) => {
+  const s = 1-fp;
+  return [{player:fp},{player:s},{player:s},{player:fp},{player:fp},{player:s}];
+};
+
+// Steps: which slots belong to each turn
+const DRAFT_STEPS = [[0],[1,2],[3,4],[5]];
+
+function currentTurnSlots(picks, order){
+  // Returns the slots the next player needs to fill
+  for(const step of DRAFT_STEPS){
+    const unfilled = step.filter(si => !picks.find(p=>p.slot===si));
+    if(unfilled.length > 0) return {player: order[step[0]].player, slots: unfilled};
+  }
+  return null; // all done
+}
+
+async function loadDraftSession(raceName){
+  try{
+    const rows = await sbGet(`draft_sessions?id=eq.${encodeURIComponent(raceName)}`);
+    return rows.length ? rows[0] : null;
+  }catch(e){ return null; }
+}
+
+async function saveDraftSession(session){
+  await sbPost('draft_sessions', session);
+}
+
+async function checkActiveDraft(){
+  // See if there's an ongoing draft session for any unlogged race
+  try{
+    const rows = await sbGet("draft_sessions?status=eq.drafting&order=created_at.desc&limit=1");
+    if(rows.length){
+      activeDraft = rows[0];
+      showDraftStep('picks');
+      renderDraftPicksUI();
+      startPolling();
+    } else {
+      showDraftStep('setup');
+      stopPolling();
+    }
+  }catch(e){ showDraftStep('setup'); }
+}
+
+function showDraftStep(step){
+  const setup = document.getElementById('draftStep-setup');
+  const picks = document.getElementById('draftStep-picks');
+  if(setup) setup.style.display = step==='setup' ? 'block' : 'none';
+  if(picks) picks.style.display = step==='picks' ? 'block' : 'none';
+}
+
+function startPolling(){
+  if(pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(async ()=>{
+    if(!activeDraft) return;
+    const fresh = await loadDraftSession(activeDraft.id);
+    if(!fresh){ stopPolling(); return; }
+    if(JSON.stringify(fresh.picks) !== JSON.stringify(activeDraft.picks) || fresh.status !== activeDraft.status){
+      activeDraft = fresh;
+      renderDraftPicksUI();
+    }
+    if(fresh.status === 'complete') stopPolling();
+  }, 3000);
+}
+
+function stopPolling(){
+  if(pollTimer){ clearInterval(pollTimer); pollTimer = null; }
+}
+
+function renderDraftPicksUI(){
+  if(!activeDraft) return;
+  const raceInfoEl = document.getElementById('draftRaceInfo');
+  const pickAreaEl = document.getElementById('draftPickArea');
+  const waitingEl  = document.getElementById('draftWaiting');
+  const submitBtn  = document.getElementById('submitPicksBtn');
+  const dupErr     = document.getElementById('dupError');
+  if(dupErr) dupErr.classList.remove('show');
+
+  const order = DRAFT_ORDER_TEMPLATE(activeDraft.first_picker);
+  const picks = activeDraft.picks || [];
+  const turn  = currentTurnSlots(picks, order);
+
+  // Race info header
+  if(raceInfoEl){
+    const sprint = RACE_IS_SPRINT[activeDraft.race_name] ? '<span class="sprint-badge" style="margin-left:6px;">Sprint</span>' : '';
+    raceInfoEl.innerHTML = `<div style="font-weight:700;font-size:15px;">${esc(activeDraft.race_name)}${sprint}</div>
+      <div style="font-size:11px;color:var(--faint);margin-top:2px;">${activeDraft.date||''}</div>`;
+  }
+
+  // Progress — all 6 slots
+  const names = ['Tanvi','Rushabh'], cols=['var(--p1)','var(--p2)'];
+  let progressHtml = `<div class="draft-progress"><div class="draft-progress-title">Draft progress</div>`;
+  order.forEach((o,si)=>{
+    const filled = picks.find(p=>p.slot===si);
+    const isMyTurn = turn && turn.player===myIdentity && turn.slots.includes(si);
+    progressHtml += `<div class="draft-slot-row">
+      <div class="slot-who" style="color:${cols[o.player]}">${names[o.player]}</div>
+      <div class="slot-driver ${filled?'filled':''}">${filled ? esc(filled.name) : (isMyTurn?'<em style="color:var(--red)">Your pick</em>':'<em>Waiting…</em>')}</div>
+      <div class="slot-status">${filled?'✓':''}</div>
+    </div>`;
   });
+  progressHtml += '</div>';
+
+  if(activeDraft.status === 'complete'){
+    if(pickAreaEl) pickAreaEl.innerHTML = progressHtml + `<div class="card" style="text-align:center;padding:16px;color:var(--green);font-weight:700;">&#10003; Draft complete!</div>`;
+    if(submitBtn) submitBtn.style.display='none';
+    if(waitingEl){ waitingEl.innerHTML=''; waitingEl.style.display='none'; }
+    return;
+  }
+
+  if(!turn){
+    if(pickAreaEl) pickAreaEl.innerHTML = progressHtml;
+    return;
+  }
+
+  if(turn.player === myIdentity){
+    // My turn — show my slots
+    myDraftPicks = {};
+    turn.slots.forEach(si=>{
+      const existing = picks.find(p=>p.slot===si);
+      if(existing) myDraftPicks[si] = existing.name;
+    });
+
+    let slotsHtml = '';
+    turn.slots.forEach((si,i)=>{
+      const cur = myDraftPicks[si]||'';
+      const team = cur ? DRIVER_TEAM[cur] : null;
+      const trHtml = team ? `<span class="dot" style="background:${TEAMS[team]||'#888'};display:inline-block;width:7px;height:7px;border-radius:2px;margin-right:5px;vertical-align:middle;transform:rotate(45deg);"></span>${esc(team)}` : '';
+      slotsHtml += `<div class="driver-block" id="slot-block-${si}">
+        <div class="field" style="margin-bottom:0;">
+          <label>Pick ${i+1}</label>
+          <button type="button" class="driver-trigger ${cur?'has-value':''}" data-slot="${si}">
+            <span class="trigger-text">${cur?esc(cur):'Select driver…'}</span>
+            <span class="trigger-arrow">▾</span>
+          </button>
+          <div class="team-readout">${trHtml}</div>
+        </div>
+      </div>`;
+    });
+
+    if(pickAreaEl) pickAreaEl.innerHTML = progressHtml + `
+      <div class="section-lbl"><span style="color:${cols[myIdentity]}">Your picks (${turn.slots.length} driver${turn.slots.length>1?'s':''})</span></div>
+      ${slotsHtml}`;
+
+    // Wire up triggers
+    turn.slots.forEach(si=>{
+      const btn = document.querySelector(`[data-slot="${si}"]`);
+      if(!btn) return;
+      btn.addEventListener('click',()=>{
+        openPicker(si, myDraftPicks[si]||'', (name)=>{
+          myDraftPicks[si] = name;
+          renderDraftPicksUI(); // re-render to update slot display
+        });
+      });
+    });
+
+    if(submitBtn){ submitBtn.style.display='block'; submitBtn.textContent='Submit My Picks'; }
+    if(waitingEl){ waitingEl.innerHTML=''; waitingEl.style.display='none'; }
+  } else {
+    // Other person's turn
+    const otherName = names[turn.player];
+    if(pickAreaEl) pickAreaEl.innerHTML = progressHtml;
+    if(submitBtn) submitBtn.style.display='none';
+    if(waitingEl){
+      waitingEl.style.display='block';
+      waitingEl.innerHTML=`<div class="waiting-card">
+        <div class="waiting-spinner"></div>
+        <div class="waiting-title">Waiting for ${esc(otherName)}…</div>
+        <div class="waiting-sub">${esc(otherName)} needs to pick ${turn.slots.length} driver${turn.slots.length>1?'s':''}. This updates automatically.</div>
+      </div>`;
+    }
+  }
 }
-function makeDraftSlot(si,pidx){
-  const wrap=document.createElement('div'); wrap.className='driver-block';
-  const cur=draftPicks[si]||'', team=cur?DRIVER_TEAM[cur]:null;
-  const trHtml=team?`<span class="dot" style="background:${TEAMS[team]||'#888'}"></span>${esc(team)}`:'';
-  wrap.innerHTML=`<div class="field" style="margin-bottom:0;"><button type="button" class="driver-trigger ${cur?'has-value':''}" data-slot="${si}"><span class="trigger-text">${cur?esc(cur):'Select driver…'}</span><span class="trigger-arrow">▾</span></button><div class="team-readout">${trHtml}</div></div>`;
-  wrap.querySelector('.driver-trigger').addEventListener('click',()=>openPicker(si,draftPicks[si],(name)=>{draftPicks[si]=name;document.getElementById('dupError').classList.remove('show');renderDraftFlow();}));
-  return wrap;
+
+// Submit my picks for this turn
+document.getElementById('submitPicksBtn') && document.getElementById('submitPicksBtn').addEventListener('click', async ()=>{
+  if(!activeDraft) return;
+  const order = DRAFT_ORDER_TEMPLATE(activeDraft.first_picker);
+  const turn  = currentTurnSlots(activeDraft.picks||[], order);
+  if(!turn || turn.player !== myIdentity) return;
+
+  // Validate all my slots are filled
+  const missing = turn.slots.filter(si=>!myDraftPicks[si]);
+  if(missing.length){ document.getElementById('dupError').classList.add('show'); return; }
+
+  // Check no duplicates with already-picked drivers
+  const alreadyPicked = (activeDraft.picks||[]).map(p=>p.name);
+  const dupes = turn.slots.filter(si=>alreadyPicked.includes(myDraftPicks[si]));
+  if(dupes.length){ document.getElementById('dupError').classList.add('show'); return; }
+
+  const btn = document.getElementById('submitPicksBtn');
+  btn.disabled=true; btn.textContent='Submitting…';
+
+  try{
+    // Merge my picks into the session
+    const newPicks = [...(activeDraft.picks||[])];
+    turn.slots.forEach(si=>{ newPicks.push({slot:si, player:myIdentity, name:myDraftPicks[si]}); });
+
+    // Check if draft is now complete
+    const allOrder = DRAFT_ORDER_TEMPLATE(activeDraft.first_picker);
+    const nextTurn = currentTurnSlots(newPicks, allOrder);
+    const isComplete = !nextTurn;
+
+    const updated = {...activeDraft, picks: newPicks, status: isComplete ? 'complete' : 'drafting'};
+    await saveDraftSession(updated);
+    activeDraft = updated;
+
+    if(isComplete){
+      // Convert draft to a real race and save
+      await completeDraftToRace(updated);
+    } else {
+      renderDraftPicksUI();
+    }
+  }catch(e){ showToast('Could not submit picks: '+e.message); }
+  finally{ btn.disabled=false; btn.textContent='Submit My Picks'; }
+});
+
+async function completeDraftToRace(session){
+  // Convert draft_session picks into the race picks format [[p0picks],[p1picks]]
+  const order = DRAFT_ORDER_TEMPLATE(session.first_picker);
+  const p0=[], p1=[];
+  order.forEach((o,si)=>{
+    const pick = (session.picks||[]).find(p=>p.slot===si);
+    const name = pick?.name||'';
+    (o.player===0?p0:p1).push({name, pos:null});
+  });
+
+  const raceObj = {
+    id: Date.now().toString(36),
+    date: session.date,
+    name: session.race_name,
+    picks: [p0,p1],
+    pickedFirst: session.first_picker,
+    isSprint: RACE_IS_SPRINT[session.race_name]||false,
+    predictions: session.predictions||['','']
+  };
+
+  await saveRaceToDB(raceObj);
+  // Mark draft as complete (already done) and clean up
+  try{ await sbDelete(`draft_sessions?id=eq.${encodeURIComponent(session.id)}`); }catch(e){}
+
+  state.races.push(raceObj);
+  activeDraft = null;
+  stopPolling();
+  populateRaceSelect();
+
+  const btn = document.getElementById('submitPicksBtn');
+  if(btn){ btn.textContent='Draft complete ✓'; btn.style.background='var(--green)'; }
+  setTimeout(()=>{
+    showDraftStep('setup');
+    document.querySelector('nav.tabs button[data-tab="standings"]').click();
+    renderStandings();
+  }, 1200);
 }
-function collectDraftPicks(){
-  const order=draftOrder(pickedFirst), p0=[], p1=[];
-  order.forEach((o,si)=>{const n=draftPicks[si]||'';(o.player===0?p0:p1).push({name:n,pos:null});});
-  return [p0,p1];
-}
+
+// Start a new draft session
+document.getElementById('startDraftBtn') && document.getElementById('startDraftBtn').addEventListener('click', async ()=>{
+  const rn = raceSelect.value;
+  if(!rn){ alert('Select a Grand Prix first.'); return; }
+
+  // Check restriction
+  if(restrictionStatus==='loaded'){
+    // No restriction here — restriction is checked per-pick in the picker
+  }
+
+  const predictions = [
+    document.getElementById('predVal0')?.value||'',
+    document.getElementById('predVal1')?.value||''
+  ];
+
+  const firstPicker = getAutoFirstPicker().player;
+  const date = RACE_DATE[rn]||todayIso();
+  const isSprint = RACE_IS_SPRINT[rn]||false;
+
+  const session = {
+    id: rn,
+    race_name: rn,
+    date,
+    is_sprint: isSprint,
+    predictions,
+    picks: [],
+    first_picker: firstPicker,
+    status: 'drafting'
+  };
+
+  const btn = document.getElementById('startDraftBtn');
+  btn.disabled=true; btn.textContent='Starting…';
+  try{
+    await saveDraftSession(session);
+    activeDraft = session;
+    showDraftStep('picks');
+    renderDraftPicksUI();
+    startPolling();
+    myDraftPicks = {};
+  }catch(e){ showToast('Could not start draft: '+e.message); }
+  finally{ btn.disabled=false; btn.textContent='Start Draft'; }
+});
 
 /* ============================================================
    DRIVER PICKER (shared bottom-sheet)
@@ -1577,6 +1924,7 @@ const pickerOverlay=document.getElementById('pickerOverlay');
 const pickerSearch=document.getElementById('pickerSearch');
 const pickerList=document.getElementById('pickerList');
 const pickerTitle=document.getElementById('pickerTitle');
+
 function openPicker(si,cur,onSelect){
   pickerCurrentValue=cur; pickerCallback=onSelect; pickerIsPred=si<0;
   pickerTitle.textContent=pickerIsPred?'Race Winner Prediction':'Pick Driver';
@@ -1586,7 +1934,10 @@ function openPicker(si,cur,onSelect){
 function closePicker(){pickerOverlay.classList.remove('open');pickerCallback=null;pickerSearch.blur();}
 function renderPickerList(query){
   const q=query.toLowerCase().trim();
-  const taken=pickerIsPred?[]:getAllDraftSelections().filter(v=>v!==pickerCurrentValue);
+  // Already-picked drivers in this draft (across all slots)
+  const alreadyPicked = pickerIsPred ? [] : (activeDraft?.picks||[]).map(p=>p.name)
+    .concat(Object.values(myDraftPicks||{}))
+    .filter(n=>n!==pickerCurrentValue);
   let html='',any=false;
   Object.keys(TEAMS).forEach(team=>{
     const matched=DRIVERS.filter(d=>d.team===team&&(!q||d.name.toLowerCase().includes(q)||d.team.toLowerCase().includes(q)));
@@ -1594,7 +1945,7 @@ function renderPickerList(query){
     const col=TEAMS[team]||'#888', restr=!pickerIsPred&&isRestricted(team);
     html+=`<div class="picker-team-label">${esc(team)}</div>`;
     matched.forEach(d=>{
-      const isCur=d.name===pickerCurrentValue, isTaken=!isCur&&taken.includes(d.name), dis=restr||isTaken;
+      const isCur=d.name===pickerCurrentValue, isTaken=!isCur&&alreadyPicked.includes(d.name), dis=restr||isTaken;
       const cls=['picker-item',isCur?'selected':'',dis?'disabled':''].filter(Boolean).join(' ');
       const lock=restr?'<span class="pi-lock">Top 3</span>':isTaken?'<span class="pi-lock">Picked</span>':'';
       html+=`<div class="${cls}" data-name="${esc(d.name)}"><div class="pi-dot" style="background:${col}"></div><div><div class="pi-name">${esc(d.name)}</div></div>${lock}${isCur?'<span class="pi-check">&#10003;</span>':''}</div>`;
@@ -1602,7 +1953,9 @@ function renderPickerList(query){
   });
   if(!any) html=`<div class="picker-empty">No drivers match &ldquo;${esc(query)}&rdquo;</div>`;
   pickerList.innerHTML=html;
-  pickerList.querySelectorAll('.picker-item:not(.disabled)').forEach(item=>{item.addEventListener('click',()=>{if(pickerCallback)pickerCallback(item.dataset.name);closePicker();});});
+  pickerList.querySelectorAll('.picker-item:not(.disabled)').forEach(item=>{
+    item.addEventListener('click',()=>{if(pickerCallback)pickerCallback(item.dataset.name);closePicker();});
+  });
 }
 pickerSearch.addEventListener('input',()=>renderPickerList(pickerSearch.value));
 document.getElementById('pickerClose').addEventListener('click',closePicker);
@@ -1624,91 +1977,18 @@ async function fetchTop3(){
     restrictedTeams=Object.keys(TEAMS).filter(t=>top3.some(a=>{const x=t.toLowerCase(),y=a.toLowerCase();return x.includes(y)||y.includes(x);}));
     restrictionStatus='loaded';
   }catch(e){restrictionStatus='error';restrictedTeams=[];}
-  renderRestrictionBanner(); renderDraftFlow();
+  renderRestrictionBanner();
 }
-function monacoSelected(){return document.getElementById('raceSelect')?.value==='Monaco Grand Prix';}
+function monacoSelected(){return raceSelect?.value==='Monaco Grand Prix';}
 function isRestricted(team){if(monacoSelected())return false;return restrictedTeams.some(r=>r.toLowerCase()===team?.toLowerCase());}
 function renderRestrictionBanner(){
-  const el=document.getElementById('restrictionBanner');
-  if(!el) return;
-  if(monacoSelected()){el.innerHTML='&#127937; <b>Monaco exception</b> \u2014 all teams available.';el.classList.add('show');return;}
-  if(restrictionStatus==='loading'){el.innerHTML='Checking Constructor standings\u2026';el.classList.add('show');}
-  else if(restrictionStatus==='loaded'){el.innerHTML=`Top 3 off-limits: <b>${restrictedTeams.map(esc).join(', ')||'\u2014'}</b>`;el.classList.add('show');}
-  else if(restrictionStatus==='error'){el.innerHTML="Couldn\u2019t load standings \u2014 all drivers available.";el.classList.add('show');}
+  const el=document.getElementById('restrictionBanner'); if(!el) return;
+  if(monacoSelected()){el.innerHTML='&#127937; <b>Monaco exception</b> — all teams available.';el.classList.add('show');return;}
+  if(restrictionStatus==='loading'){el.innerHTML='Checking Constructor standings…';el.classList.add('show');}
+  else if(restrictionStatus==='loaded'){el.innerHTML=`Top 3 off-limits: <b>${restrictedTeams.map(esc).join(', ')||'—'}</b>`;el.classList.add('show');}
+  else if(restrictionStatus==='error'){el.innerHTML="Couldn’t load standings — all drivers available.";el.classList.add('show');}
   else el.classList.remove('show');
 }
-
-
-/* ============================================================
-   SAVE / EDIT / RESET
-============================================================ */
-function resetForm(){
-  raceSelect.value=''; sprintCheck.checked=false; draftPicks=['','','','','',''];
-  renderDraftFlow(); setPredictionValues(['','']);
-  document.getElementById('dupError').classList.remove('show');
-  renderAutoFirstPicker();
-}
-function enterEditMode(race){
-  editingId=race.id; 
-  // Temporarily add this race back to dropdown if it was filtered out
-  const loggedNames = new Set(state.races.filter(r=>r.id!==race.id).map(r=>r.name));
-  const available = PLAYABLE_RACES.filter(r=>!loggedNames.has(r.name));
-  raceSelect.innerHTML='<option value="">Select race…</option>'+available.map(r=>`<option value="${r.name}">${r.name}${r.sprint?' ⚡':''}</option>`).join('');
-  raceSelect.value=race.name; sprintCheck.checked=!!race.isSprint;
-  const order=draftOrder(race.pickedFirst||0), p0=race.picks[0]||[], p1=race.picks[1]||[], ctr=[0,0];
-  order.forEach((o,si)=>{const arr=o.player===0?p0:p1; draftPicks[si]=arr[ctr[o.player]]?.name||''; ctr[o.player]++;});
-  pickedFirst=race.pickedFirst||0;
-  document.getElementById('pfBtn0').classList.toggle('active',pickedFirst===0);
-  document.getElementById('pfBtn1').classList.toggle('active',pickedFirst===1);
-  setPredictionValues(race.predictions||['','']);
-  document.getElementById('lastPickNote').classList.remove('show');
-  document.getElementById('editingBar').classList.add('show');
-  const btn=document.getElementById('saveBtn'); btn.textContent='Save Changes'; btn.classList.add('editing');
-  renderDraftFlow();
-  document.querySelector('nav.tabs button[data-tab="add"]').click();
-}
-function exitEditMode(){
-  editingId=null; document.getElementById('editingBar').classList.remove('show');
-  const btn=document.getElementById('saveBtn'); btn.textContent='Log Race'; btn.classList.remove('editing');
-  resetForm();
-}
-document.getElementById('cancelEditBtn').addEventListener('click',exitEditMode);
-document.getElementById('saveBtn').addEventListener('click',async ()=>{
-  const rn=raceSelect.value;
-  console.log('Log Race clicked. Race:', rn);
-  if(!rn){alert('Select a Grand Prix first.');return;}
-  const [p0,p1]=collectDraftPicks();
-  const allNames=[...p0,...p1].map(p=>p.name).filter(Boolean);
-  console.log('Validation passed, building race object...');
-  const predictions=[document.getElementById('predVal0').value||'',document.getElementById('predVal1').value||''];
-  const date=RACE_DATE[rn]||todayIso(), isSprint=sprintCheck.checked;
-  const btn=document.getElementById('saveBtn'); btn.disabled=true; btn.textContent='Saving…';
-  const raceObj=editingId
-    ?{id:editingId,date,name:rn,picks:[p0,p1],pickedFirst,isSprint,predictions}
-    :{id:Date.now().toString(36),date,name:rn,picks:[p0,p1],pickedFirst,isSprint,predictions};
-  try{
-    console.log('Saving race:', JSON.stringify(raceObj));
-    await saveRaceToDB(raceObj);
-    console.log('Save successful');
-    if(editingId){
-      const i=state.races.findIndex(r=>r.id===editingId);
-      if(i!==-1)state.races[i]=raceObj;
-      btn.textContent='Saved ✓';
-      setTimeout(()=>{ populateRaceSelect(); exitEditMode(); document.querySelector('nav.tabs button[data-tab="history"]').click(); }, 1000);
-    } else {
-      state.races.push(raceObj);
-      btn.textContent='Saved ✓';
-      btn.style.background='var(--green)';
-      setTimeout(()=>{
-        btn.style.background='';
-        populateRaceSelect();
-        resetForm();
-        document.querySelector('nav.tabs button[data-tab="standings"]').click();
-      }, 1000);
-    }
-  }catch(e){console.error('Save failed:', e);}finally{btn.disabled=false;btn.textContent=editingId?'Save Changes':'Log Race';}
-});
-renderDraftFlow();
 
 /* ============================================================
    HISTORY
@@ -1717,12 +1997,16 @@ function renderHistory(){
   const list=document.getElementById('historyList');
   const n0='Tanvi', n1='Rushabh';
   if(!state.races.length){
-    list.innerHTML=`<div class="empty-state"><svg viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg">${[...Array(8)].map((_,i)=>[...Array(8)].map((_,j)=>`<rect x="${j*7}" y="${i*7}" width="7" height="7" fill="${(i+j)%2===0?'#fff':'#2C2C31'}"/>`).join('')).join('')}</svg><p>No races yet. Head to <b>Log Race</b> to get started.</p></div>`;
+    list.innerHTML=`<div class="empty-state">
+      <svg viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg">${[...Array(8)].map((_,i)=>[...Array(8)].map((_,j)=>`<rect x="${j*7}" y="${i*7}" width="7" height="7" fill="${(i+j)%2===0?'#fff':'#2C2C31'}"/>`).join('')).join('')}</svg>
+      <p>No races yet. Head to <b>Log Race</b> to get started.</p>
+    </div>`;
     return;
   }
   const today=todayIso();
   const sorted=[...state.races].sort((a,b)=>b.date?.localeCompare(a.date)||b.id?.localeCompare(a.id));
   list.innerHTML=sorted.map(race=>{
+    const isSprint=RACE_IS_SPRINT[race.name]||false;
     const [p0,p1]=racePts(race);
     const isPast=race.date&&race.date<today;
     const isLocked=isPast&&!race.unlocked;
@@ -1733,23 +2017,28 @@ function renderHistory(){
     else if(p0>p1) wtag=`<span class="wtag w1">${esc(n0)} +${margin}</span>`;
     else wtag=`<span class="wtag w2">${esc(n1)} +${margin}</span>`;
     const dateFmt=race.date?new Date(race.date+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'';
-    const sprintTag=race.isSprint?`<span class="sprint-badge">Sprint</span>`:'';
+    const sprintTag=isSprint?`<span class="sprint-badge">Sprint</span>`:'';
     const lockedTag=isLocked?`<span class="locked-tag">&#128274;</span>`:'';
     const pfName=race.pickedFirst===0?n0:race.pickedFirst===1?n1:null;
     function driverLines(picks){
       if(!picks.length) return `<div style="font-size:12px;color:var(--faint);padding:6px 0;">No picks entered</div>`;
       return picks.map(d=>{
         const team=DRIVER_TEAM[d.name];
-        const posLabel=d.pos==='DNF'?'DNF':d.pos?'P'+d.pos:'—';
-        const ptsVal=pts(d.pos,race.isSprint);
-        return `<div class="dline"><span class="dpos">${posLabel}</span><span class="dname">${esc(d.name||'—')}${team?`<span class="dteam">${esc(team)}</span>`:''}</span><span class="dpts">${d.pos?ptsVal+' pts':''}</span></div>`;
+        const posLabel=d.pos==='DNF'?'DNF':d.pos?'P'+d.pos:'\u2014';
+        const ptsVal=pts(d.pos,isSprint);
+        return `<div class="dline"><span class="dpos">${posLabel}</span><span class="dname">${esc(d.name||'\u2014')}${team?`<span class="dteam">${esc(team)}</span>`:''}</span><span class="dpts">${d.pos?ptsVal+' pts':''}</span></div>`;
       }).join('');
     }
     const round=RACE_ROUND[race.name];
-    const actionsHtml=isLocked?`<div class="race-actions"><button class="fetch-btn" data-fetch="${race.id}" data-round="${round||''}">&#8635; Fetch results</button><button class="unlock-btn" data-unlock="${race.id}">Unlock to edit</button></div>`:`<div class="race-actions">${isPast?`<button class="fetch-btn" data-fetch="${race.id}" data-round="${round||''}">&#8635; Fetch results</button>`:''}<button class="edit-btn" data-edit="${race.id}">Edit</button><button class="del-btn" data-del="${race.id}">Delete</button></div>`;
-    return `<div class="race-card${race.isSprint?' is-sprint':''}">
+    const actionsHtml=isLocked
+      ?`<div class="race-actions"><button class="fetch-btn" data-fetch="${race.id}" data-round="${round||''}">&#8635; Fetch results</button><button class="unlock-btn" data-unlock="${race.id}">Unlock to edit</button></div>`
+      :`<div class="race-actions">${isPast?`<button class="fetch-btn" data-fetch="${race.id}" data-round="${round||''}">&#8635; Fetch results</button>`:''}<button class="del-btn" data-del="${race.id}">Delete</button></div>`;
+    return `<div class="race-card${isSprint?' is-sprint':''}">
       <div class="race-card-head" data-id="${race.id}">
-        <div class="race-meta"><div class="race-name-row"><span class="race-name">${esc(race.name)}</span>${sprintTag}${lockedTag}</div><div class="race-date">${dateFmt}</div></div>
+        <div class="race-meta">
+          <div class="race-name-row"><span class="race-name">${esc(race.name)}</span>${sprintTag}${lockedTag}</div>
+          <div class="race-date">${dateFmt}</div>
+        </div>
         ${wtag}<span class="chevron">&#9662;</span>
       </div>
       <div class="race-card-body" id="body-${race.id}">
@@ -1765,9 +2054,6 @@ function renderHistory(){
   }).join('');
   list.querySelectorAll('.race-card-head').forEach(h=>{
     h.addEventListener('click',()=>{const id=h.dataset.id;const body=document.getElementById('body-'+id);const chev=h.querySelector('.chevron');const open=body.classList.toggle('open');chev.classList.toggle('open',open);});
-  });
-  list.querySelectorAll('[data-edit]').forEach(b=>{
-    b.addEventListener('click',e=>{e.stopPropagation();const r=state.races.find(x=>x.id===b.dataset.edit);if(r)enterEditMode(r);});
   });
   list.querySelectorAll('[data-del]').forEach(b=>{
     b.addEventListener('click',async e=>{
@@ -1794,11 +2080,11 @@ function renderHistory(){
       const race=state.races.find(r=>r.id===id);
       const statusEl=document.getElementById('fstatus-'+id);
       if(!race||!round){if(statusEl){statusEl.textContent="Can't find results for this race.";statusEl.style.display='block';}return;}
-      b.disabled=true; b.textContent='Fetching…';
+      b.disabled=true; b.textContent='Fetching\u2026';
       try{
         const n=await fetchResults(race,round);
         if(n>0){try{await saveRaceToDB(race);}catch(e){}renderHistory();renderStandings();}
-        else{if(statusEl){statusEl.textContent='No results yet — try after the race.';statusEl.style.display='block';}}
+        else{if(statusEl){statusEl.textContent='No results yet \u2014 try after the race.';statusEl.style.display='block';}}
       }catch(err){if(statusEl){statusEl.textContent='Connection error. Try again.';statusEl.style.display='block';}}
       finally{b.disabled=false;b.textContent='&#8635; Fetch results';}
     });
@@ -1806,8 +2092,23 @@ function renderHistory(){
 }
 
 /* ============================================================
-   FETCH RESULTS (Jolpica)
+   CANCEL EDIT (legacy — kept for history edit support)
 ============================================================ */
+document.getElementById('cancelEditBtn') && document.getElementById('cancelEditBtn').addEventListener('click',()=>{
+  document.getElementById('editingBar').classList.remove('show');
+  showDraftStep('setup');
+  populateRaceSelect();
+});
+
+/* ============================================================
+   INIT — show identity prompt or draft UI
+============================================================ */
+if(myIdentity === 0 || myIdentity === 1){
+  showDraftUI();
+} else {
+  showIdentityPrompt();
+}
+
 /* ============================================================
    FETCH RESULTS (Jolpica)
 ============================================================ */
