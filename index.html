@@ -420,7 +420,8 @@ main{padding:14px 14px 90px;max-width:720px;margin:0 auto;}
   <div class="stripe"></div>
   <h1 class="f">Grid Points</h1>
   <div class="badge">2026 SEASON</div>
-  <button id="settingsBtn" style="background:none;border:none;color:var(--faint);font-size:18px;cursor:pointer;padding:4px;margin-left:6px;line-height:1;" title="Settings">⚙️</button>
+  <button id="refreshBtn" style="background:none;border:none;color:var(--faint);font-size:18px;cursor:pointer;padding:4px;margin-left:2px;line-height:1;" title="Refresh">⟳</button>
+  <button id="settingsBtn" style="background:none;border:none;color:var(--faint);font-size:18px;cursor:pointer;padding:4px;margin-left:2px;line-height:1;" title="Settings">⚙️</button>
   <!-- Watermark car SVG -->
   <svg class="car-watermark" viewBox="0 0 480 110" xmlns="http://www.w3.org/2000/svg">
     <rect x="20" y="28" width="12" height="30" fill="#E10600"/>
@@ -1596,6 +1597,16 @@ function updateSettingsUI(){
   if(note) note.textContent = myIdentity>=0 ? `Currently set to: ${myIdentity===0?'Tanvi':'Rushabh'}` : 'Not set';
 }
 
+document.getElementById('refreshBtn').addEventListener('click', async ()=>{
+  const btn = document.getElementById('refreshBtn');
+  btn.style.opacity = '0.4';
+  btn.style.transform = 'rotate(360deg)';
+  btn.style.transition = 'transform 0.5s ease';
+  await loadFromDB();
+  await checkActiveDraft();
+  setTimeout(()=>{ btn.style.opacity=''; btn.style.transform=''; btn.style.transition=''; }, 600);
+});
+
 document.getElementById('settingsBtn').addEventListener('click', ()=>{
   updateSettingsUI();
   document.getElementById('settingsOverlay').classList.add('open');
@@ -1738,9 +1749,9 @@ async function saveDraftSession(session){
 }
 
 async function checkActiveDraft(){
-  // See if there's an ongoing draft session for any unlogged race
+  // See if there's an ongoing or just-completed draft session
   try{
-    const rows = await sbGet("draft_sessions?status=eq.drafting&order=created_at.desc&limit=1");
+    const rows = await sbGet("draft_sessions?status=in.(drafting,complete)&order=created_at.desc&limit=1");
     if(rows.length){
       activeDraft = rows[0];
       showDraftStep('picks');
@@ -1765,12 +1776,28 @@ function startPolling(){
   pollTimer = setInterval(async ()=>{
     if(!activeDraft) return;
     const fresh = await loadDraftSession(activeDraft.id);
-    if(!fresh){ stopPolling(); return; }
-    if(JSON.stringify(fresh.picks) !== JSON.stringify(activeDraft.picks) || fresh.status !== activeDraft.status){
+    if(!fresh){
+      // Draft session deleted — means it completed and was cleaned up
+      if(activeDraft.status === 'complete'){
+        // Already handled locally
+      } else {
+        // Session disappeared unexpectedly — reload
+        await loadFromDB();
+        showDraftStep('setup');
+      }
+      stopPolling();
+      return;
+    }
+    const changed = JSON.stringify(fresh.picks) !== JSON.stringify(activeDraft.picks) || fresh.status !== activeDraft.status;
+    if(changed){
       activeDraft = fresh;
       renderDraftPicksUI();
     }
-    if(fresh.status === 'complete') stopPolling();
+    // If draft just completed and we're not the one who triggered it, handle it here
+    if(fresh.status === 'complete' && !state.races.find(r=>r.name===fresh.race_name)){
+      stopPolling();
+      await completeDraftToRace(fresh);
+    }
   }, 3000);
 }
 
@@ -1932,6 +1959,15 @@ document.getElementById('submitPicksBtn') && document.getElementById('submitPick
 });
 
 async function completeDraftToRace(session){
+  // Guard: if this race is already in state, just show success and navigate
+  if(state.races.find(r=>r.name===session.race_name)){
+    activeDraft = null;
+    stopPolling();
+    populateRaceSelect();
+    showGreenComplete();
+    return;
+  }
+
   // Convert draft_session picks into the race picks format [[p0picks],[p1picks]]
   const order = DRAFT_ORDER_TEMPLATE(session.first_picker);
   const p0=[], p1=[];
@@ -1951,22 +1987,31 @@ async function completeDraftToRace(session){
     predictions: session.predictions||['','']
   };
 
-  await saveRaceToDB(raceObj);
-  // Mark draft as complete (already done) and clean up
+  try{ await saveRaceToDB(raceObj); }catch(e){}
+  // Clean up draft session — ignore errors (other device may have already deleted it)
   try{ await sbDelete(`draft_sessions?id=eq.${encodeURIComponent(session.id)}`); }catch(e){}
 
   state.races.push(raceObj);
   activeDraft = null;
   stopPolling();
   populateRaceSelect();
+  showGreenComplete();
+}
 
+function showGreenComplete(){
   const btn = document.getElementById('submitPicksBtn');
-  if(btn){ btn.textContent='Draft complete ✓'; btn.style.background='var(--green)'; }
+  if(btn){
+    btn.style.display = 'block';
+    btn.textContent = 'Draft complete \u2713';
+    btn.style.background = 'var(--green)';
+    btn.disabled = true;
+  }
   setTimeout(()=>{
+    if(btn){ btn.style.background=''; btn.disabled=false; btn.style.display='none'; }
     showDraftStep('setup');
     document.querySelector('nav.tabs button[data-tab="standings"]').click();
     renderStandings();
-  }, 1200);
+  }, 2000);
 }
 
 // Start a new draft session
