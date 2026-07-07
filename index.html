@@ -510,8 +510,9 @@ main{padding:14px 14px 90px;max-width:720px;margin:0 auto;}
     <!-- PREDICTIONS — always visible, independent of draft state -->
     <div id="predictionsCard" style="display:none;">
       <div class="card">
-        <div class="card-head" style="margin-bottom:8px;">&#127919; Race winner prediction <span style="font-size:9px;background:rgba(216,154,28,.2);color:var(--amber);padding:2px 7px;border-radius:10px;margin-left:6px;letter-spacing:.5px;">+5 PTS IF CORRECT</span></div>
-        <div class="note" style="margin-bottom:12px;">Submit before qualifying. Independent — same driver allowed for both.</div>
+        <div class="card-head" style="margin-bottom:4px;">&#127919; Race winner prediction <span style="font-size:9px;background:rgba(216,154,28,.2);color:var(--amber);padding:2px 7px;border-radius:10px;margin-left:6px;letter-spacing:.5px;">+5 PTS IF CORRECT</span></div>
+        <div id="predRaceName" style="font-size:12px;color:var(--faint);margin-bottom:10px;font-weight:600;"></div>
+        <div class="note" style="margin-bottom:12px;">Submit before qualifying. Independent — same driver allowed.</div>
         <div class="field" style="margin-bottom:10px;">
           <label id="myPredLabel">My prediction</label>
           <button type="button" class="driver-trigger" id="myPredTrigger">
@@ -549,8 +550,11 @@ main{padding:14px 14px 90px;max-width:720px;margin:0 auto;}
     <!-- Step 2: Active draft -->
     <div id="draftStep-picks" style="display:none;">
       <div class="card" id="draftRaceInfo"></div>
+      <!-- Predictions inside draft — mandatory before picks submit -->
+      <div id="draftPredSection" style="display:none;"></div>
       <div id="draftPickArea"></div>
       <div class="inline-error" id="dupError">This driver is already picked.</div>
+      <div class="inline-error" id="predRequiredError" style="display:none;background:rgba(216,154,28,.1);border-color:rgba(216,154,28,.4);color:var(--amber);">&#127919; Both players must submit their race winner prediction before picks can be submitted.</div>
       <button class="submit-btn" id="submitPicksBtn" style="display:none;">Submit My Picks</button>
       <div id="draftWaiting" style="display:none;"></div>
     </div>
@@ -1664,8 +1668,8 @@ raceSelect && raceSelect.addEventListener('change',()=>{
   if(predCard) predCard.style.display=(r&&r.round>=9)?'block':'none';
   stopPredPolling();
   renderRestrictionBanner();
-  if(r && r.round>=9) loadPredictions(r.name);
-  else renderPredCard('', ['','']);
+  if(r && r.round>=9 && !activeDraft) loadPredictions(r.name);
+  else if(!r || r.round<9) renderPredCard('', []);
 });
 
 /* ============================================================
@@ -1689,7 +1693,8 @@ if(myPredTrigger){
 
 // Submit my prediction
 document.getElementById('submitPredBtn') && document.getElementById('submitPredBtn').addEventListener('click', async ()=>{
-  const rn = raceSelect.value;
+  // Use the active draft's race name if a draft is running, otherwise use dropdown
+  const rn = activeDraft?.race_name || raceSelect.value;
   const pick = myPredVal?.value||'';
   if(!rn){ alert('Select a Grand Prix first.'); return; }
   if(!pick){ alert('Select a predicted race winner first.'); return; }
@@ -1698,23 +1703,22 @@ document.getElementById('submitPredBtn') && document.getElementById('submitPredB
   btn.disabled = true; btn.textContent = 'Saving\u2026';
 
   try{
-    // Load or create a prediction record in draft_sessions using race name as key
     const predKey = rn + '__pred';
     let rows = await sbGet(`draft_sessions?id=eq.${encodeURIComponent(predKey)}`);
     let preds = rows.length ? (rows[0].predictions||['','']) : ['',''];
-    preds = [...preds]; // copy
+    preds = [...preds];
     preds[myIdentity] = pick;
     await sbPost('draft_sessions', {
-      id: predKey,
-      race_name: rn,
-      status: 'predictions',
-      predictions: preds,
-      picks: [], first_picker: 0
+      id: predKey, race_name: rn, status: 'predictions',
+      predictions: preds, picks: [], first_picker: 0
     });
     renderPredCard(rn, preds);
-    btn.textContent = 'Saved \u2713';
-    btn.style.background = 'var(--green)';
-    setTimeout(()=>{ btn.textContent='Change prediction'; btn.style.background=''; btn.disabled=false; }, 1500);
+    btn.textContent = 'Saved \u2713'; btn.style.background = 'var(--green)';
+    setTimeout(()=>{
+      btn.textContent='Change prediction'; btn.style.background=''; btn.disabled=false;
+      // Re-render draft UI so Submit My Picks unlocks if all slots filled
+      if(activeDraft) renderDraftPicksUI();
+    }, 1500);
     startPredPolling(predKey, rn);
   }catch(e){
     showToast('Could not save prediction.');
@@ -1722,33 +1726,153 @@ document.getElementById('submitPredBtn') && document.getElementById('submitPredB
   }
 });
 
-function renderPredCard(raceName, preds){
-  const names = ['Tanvi','Rushabh'];
-  const myPred = preds[myIdentity]||'';
-  const otherPred = preds[1-myIdentity]||'';
-  const otherName = names[1-myIdentity];
+function checkBothPredsSubmitted(preds){
+  return !!(preds && preds[0] && preds[1]);
+}
 
-  // Update my trigger
+function updateSubmitBtnForPreds(preds){
+  const submitBtn = document.getElementById('submitPicksBtn');
+  const blockedMsg = document.getElementById('predRequiredError');
+  if(!submitBtn) return;
+  const round = RACE_ROUND[activeDraft?.race_name]||0;
+  if(round < 9) return; // no pred requirement before British GP
+  const bothDone = checkBothPredsSubmitted(preds);
+  // Only update if the button is currently shown (my turn)
+  if(submitBtn.style.display !== 'none'){
+    submitBtn.disabled = !bothDone;
+    submitBtn.style.opacity = bothDone ? '1' : '0.5';
+  }
+  if(blockedMsg){
+    blockedMsg.style.display = bothDone ? 'none' : 'block';
+  }
+}
+
+function renderPredCard(raceName, preds){
+  const round = RACE_ROUND[raceName]||0;
+
+  // When draft is active, move pred card into draftPredSection
+  // When no draft, show in predictionsCard (setup screen)
+  const isDraftActive = !!activeDraft;
+  const predCard = document.getElementById('predictionsCard');
+  const draftPredSection = document.getElementById('draftPredSection');
+
+  if(!raceName || round < 9){
+    if(predCard) predCard.style.display = 'none';
+    if(draftPredSection){ draftPredSection.style.display='none'; draftPredSection.innerHTML=''; }
+    return;
+  }
+
+  if(isDraftActive){
+    // Hide the standalone card, render inline in draft section
+    if(predCard) predCard.style.display = 'none';
+    if(draftPredSection){
+      draftPredSection.style.display = 'block';
+      draftPredSection.innerHTML = buildPredCardHTML(raceName, preds);
+      wirePredCardEvents(raceName, preds);
+    }
+  } else {
+    // Show standalone card in setup
+    if(predCard) predCard.style.display = 'block';
+    if(draftPredSection){ draftPredSection.style.display='none'; draftPredSection.innerHTML=''; }
+    populateStandalonePredCard(raceName, preds);
+  }
+
+  updateSubmitBtnForPreds(preds);
+}
+
+function buildPredCardHTML(raceName, preds){
+  const names = ['Tanvi','Rushabh'];
+  const myPred = (preds||[])[myIdentity]||'';
+  const otherPred = (preds||[])[1-myIdentity]||'';
+  const otherName = myIdentity>=0 ? names[1-myIdentity] : 'other player';
+  const myName = myIdentity>=0 ? names[myIdentity] : 'My';
+  const bothDone = checkBothPredsSubmitted(preds);
+
+  const otherHtml = otherPred
+    ? `<b style="color:var(--white)">${esc(otherName)}</b> predicts: <b style="color:var(--amber)">${esc(otherPred)}</b>`
+    : `<span style="color:var(--faint)">… waiting for ${esc(otherName)}'s prediction</span>`;
+
+  return `<div class="card" style="margin-bottom:10px;">
+    <div class="card-head" style="margin-bottom:4px;">&#127919; Race winner prediction
+      <span style="font-size:9px;background:rgba(216,154,28,.2);color:var(--amber);padding:2px 7px;border-radius:10px;margin-left:6px;letter-spacing:.5px;">+5 PTS IF CORRECT</span>
+    </div>
+    <div style="font-size:10px;color:var(--faint);margin-bottom:10px;">Both players must predict before picks can be submitted.</div>
+    <div class="field" style="margin-bottom:10px;">
+      <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">${esc(myName)}'s prediction</label>
+      <button type="button" class="driver-trigger ${myPred?'has-value':''}" id="inlinePredTrigger">
+        <span class="trigger-text" style="color:${myPred?'':'var(--faint)'}">${myPred?esc(myPred):'Select predicted winner…'}</span>
+        <span class="trigger-arrow">&#9662;</span>
+      </button>
+      <input type="hidden" id="inlinePredVal" value="${esc(myPred)}">
+    </div>
+    <button class="submit-btn" id="inlineSubmitPredBtn" style="margin-bottom:10px;background:var(--amber);font-size:12px;padding:11px;">${myPred?'Change prediction':'Submit prediction'}</button>
+    <div style="border-top:1px solid var(--line);padding-top:10px;font-size:12px;">${otherHtml}</div>
+    ${bothDone?'<div style="font-size:11px;color:var(--green);margin-top:8px;text-align:center;">&#10003; Both predictions submitted</div>':''}
+  </div>`;
+}
+
+function wirePredCardEvents(raceName, preds){
+  const trigger = document.getElementById('inlinePredTrigger');
+  const hiddenVal = document.getElementById('inlinePredVal');
+  const submitBtn = document.getElementById('inlineSubmitPredBtn');
+
+  if(trigger && hiddenVal){
+    trigger.addEventListener('click',()=>{
+      openPicker(-1, hiddenVal.value, (name)=>{
+        hiddenVal.value = name;
+        trigger.querySelector('.trigger-text').textContent = name;
+        trigger.querySelector('.trigger-text').style.color = '';
+        trigger.classList.add('has-value');
+      });
+    });
+  }
+
+  if(submitBtn){
+    submitBtn.addEventListener('click', async ()=>{
+      const pick = hiddenVal?.value||'';
+      if(!pick){ alert('Select a predicted winner first.'); return; }
+      submitBtn.disabled=true; submitBtn.textContent='Saving…';
+      try{
+        const predKey = raceName + '__pred';
+        let rows = await sbGet(`draft_sessions?id=eq.${encodeURIComponent(predKey)}`);
+        let newPreds = rows.length ? [...(rows[0].predictions||['',''])] : ['',''];
+        newPreds[myIdentity] = pick;
+        await sbPost('draft_sessions', {id:predKey, race_name:raceName, status:'predictions', predictions:newPreds, picks:[], first_picker:0});
+        renderPredCard(raceName, newPreds);
+        submitBtn.textContent='Saved ✓'; submitBtn.style.background='var(--green)';
+        setTimeout(()=>{ submitBtn.style.background=''; submitBtn.disabled=false; submitBtn.textContent='Change prediction'; },1500);
+        startPredPolling(predKey, raceName);
+      }catch(e){ showToast('Could not save prediction.'); submitBtn.disabled=false; submitBtn.textContent='Submit prediction'; }
+    });
+  }
+}
+
+function populateStandalonePredCard(raceName, preds){
+  const myPredVal = document.getElementById('myPredVal');
+  const myPredTrigger = document.getElementById('myPredTrigger');
+  const otherEl = document.getElementById('otherPredDisplay');
+  const lbl = document.getElementById('myPredLabel');
+  const btn = document.getElementById('submitPredBtn');
+  const raceNameEl = document.getElementById('predRaceName');
+  const names = ['Tanvi','Rushabh'];
+  const myPred = (preds||[])[myIdentity]||'';
+  const otherPred = (preds||[])[1-myIdentity]||'';
+  const otherName = myIdentity>=0 ? names[1-myIdentity] : 'other player';
+
+  if(raceNameEl) raceNameEl.textContent = raceName;
+  if(lbl && myIdentity>=0) lbl.textContent = names[myIdentity] + "'s prediction";
   if(myPredVal) myPredVal.value = myPred;
   if(myPredTrigger){
     const txt = myPredTrigger.querySelector('.trigger-text');
-    if(txt){ txt.textContent = myPred||'Select predicted winner\u2026'; txt.style.color = myPred?'':'var(--faint)'; }
+    if(txt){ txt.textContent = myPred||'Select predicted winner…'; txt.style.color = myPred?'':'var(--faint)'; }
     myPredTrigger.classList.toggle('has-value', !!myPred);
   }
-
-  // Update other player display
-  const otherEl = document.getElementById('otherPredDisplay');
+  if(btn && !btn.disabled) btn.textContent = myPred ? 'Change prediction' : 'Submit prediction';
   if(otherEl){
-    if(otherPred){
-      otherEl.innerHTML = `<b style="color:var(--white)">${esc(otherName)}</b> predicts: <b style="color:var(--amber)">${esc(otherPred)}</b>`;
-    } else {
-      otherEl.innerHTML = `\u2026 waiting for ${esc(otherName)}'s prediction`;
-    }
+    otherEl.innerHTML = otherPred
+      ? `<b style="color:var(--white)">${esc(otherName)}</b> predicts: <b style="color:var(--amber)">${esc(otherPred)}</b>`
+      : `… waiting for ${esc(otherName)}'s prediction`;
   }
-
-  // Update label
-  const lbl = document.getElementById('myPredLabel');
-  if(lbl) lbl.textContent = names[myIdentity] + "'s prediction";
 }
 
 async function loadPredictions(raceName){
@@ -1759,7 +1883,7 @@ async function loadPredictions(raceName){
     const preds = rows.length ? (rows[0].predictions||['','']) : ['',''];
     renderPredCard(raceName, preds);
     startPredPolling(predKey, raceName);
-  }catch(e){}
+  }catch(e){ renderPredCard(raceName, ['','']); }
 }
 
 function startPredPolling(predKey, raceName){
@@ -1769,20 +1893,20 @@ function startPredPolling(predKey, raceName){
       const rows = await sbGet(`draft_sessions?id=eq.${encodeURIComponent(predKey)}`);
       const preds = rows.length ? (rows[0].predictions||['','']) : ['',''];
       renderPredCard(raceName, preds);
+      updateSubmitBtnForPreds(preds);
     }catch(e){}
-  }, 5000);
+  }, 4000);
 }
 
 function stopPredPolling(){
   if(predPollTimer){ clearInterval(predPollTimer); predPollTimer=null; }
 }
 
-// Legacy — keep for draft session compatibility
 function setPredictionValues(preds){
   if(!preds) return;
-  if(myPredVal) myPredVal.value = preds[myIdentity]||'';
-  renderPredCard(raceSelect?.value||'', preds);
+  renderPredCard(activeDraft?.race_name || raceSelect?.value||'', preds);
 }
+
 
 
 /* ============================================================
@@ -1854,10 +1978,10 @@ async function checkActiveDraft(){
       showDraftStep('picks');
       renderDraftPicksUI();
       startPolling();
-      // Show predictions for this race
-      const predCard=document.getElementById('predictionsCard');
-      if(predCard && RACE_ROUND[activeDraft.race_name]>=9) predCard.style.display='block';
-      loadPredictions(activeDraft.race_name);
+      // Show predictions for this race automatically on both devices
+      if(RACE_ROUND[activeDraft.race_name]>=9){
+        loadPredictions(activeDraft.race_name);
+      }
     } else {
       showDraftStep('setup');
       stopPolling();
@@ -1868,8 +1992,15 @@ async function checkActiveDraft(){
 function showDraftStep(step){
   const setup = document.getElementById('draftStep-setup');
   const picks = document.getElementById('draftStep-picks');
+  const predCard = document.getElementById('predictionsCard');
   if(setup) setup.style.display = step==='setup' ? 'block' : 'none';
   if(picks) picks.style.display = step==='picks' ? 'block' : 'none';
+  // Predictions card: shown in picks step always (if applicable), shown in setup only when race selected
+  if(step==='picks'){
+    // Will be shown/hidden by loadPredictions based on round
+  } else if(step==='setup'){
+    // Keep current visibility (controlled by raceSelect change handler)
+  }
 }
 
 function startPolling(){
@@ -1915,7 +2046,23 @@ function renderDraftPicksUI(){
   const dupErr     = document.getElementById('dupError');
   if(dupErr) dupErr.classList.remove('show');
 
-  // Predictions are handled by the persistent card above
+  // Render predictions section inside draft if round >= 9
+  const predSection = document.getElementById('draftPredSection');
+  if(predSection){
+    const round = RACE_ROUND[activeDraft.race_name]||0;
+    if(round >= 9){
+      predSection.style.display = 'block';
+      // Re-render the predictions card content inline
+      const predKey = activeDraft.race_name + '__pred';
+      sbGet(`draft_sessions?id=eq.${encodeURIComponent(predKey)}`).then(rows=>{
+        const preds = rows.length ? (rows[0].predictions||['','']) : ['',''];
+        renderPredCard(activeDraft.race_name, preds);
+        startPredPolling(predKey, activeDraft.race_name);
+      }).catch(()=>{});
+    } else {
+      predSection.style.display = 'none';
+    }
+  }
 
   const order = DRAFT_ORDER_TEMPLATE(activeDraft.first_picker);
   const picks = activeDraft.picks || [];
@@ -1985,7 +2132,23 @@ function renderDraftPicksUI(){
         ${slotsHtml}`;
     }
 
-    if(submitBtn){ submitBtn.style.display='block'; submitBtn.textContent='Submit My Picks'; }
+    // Check both predictions submitted (loaded async via polling)
+    const needsPred = (RACE_ROUND[activeDraft.race_name]||0) >= 9;
+    const predKey = activeDraft.race_name + '__pred';
+    sbGet(`draft_sessions?id=eq.${encodeURIComponent(predKey)}`).then(rows=>{
+      const preds = rows.length ? (rows[0].predictions||['','']) : ['',''];
+      const bothDone = !needsPred || checkBothPredsSubmitted(preds);
+      const predErr = document.getElementById('predRequiredError');
+      if(predErr) predErr.style.display = bothDone ? 'none' : 'block';
+      if(submitBtn){
+        submitBtn.style.display = 'block';
+        submitBtn.textContent = 'Submit My Picks';
+        submitBtn.disabled = !bothDone;
+        submitBtn.style.opacity = bothDone ? '1' : '0.5';
+      }
+    }).catch(()=>{
+      if(submitBtn){ submitBtn.style.display='block'; submitBtn.textContent='Submit My Picks'; submitBtn.disabled=false; submitBtn.style.opacity='1'; }
+    });
     if(waitingEl){ waitingEl.innerHTML=''; waitingEl.style.display='none'; }
   } else {
     // Other person's turn — clear my picks so next turn starts fresh
@@ -1993,6 +2156,8 @@ function renderDraftPicksUI(){
     const otherName = names[turn.player];
     if(pickAreaEl) pickAreaEl.innerHTML = progressHtml;
     if(submitBtn) submitBtn.style.display='none';
+    const predErrEl = document.getElementById('predRequiredError');
+    if(predErrEl) predErrEl.style.display='none';
     if(waitingEl){
       waitingEl.style.display='block';
       waitingEl.innerHTML=`<div class="waiting-card">
