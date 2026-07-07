@@ -1842,7 +1842,7 @@ function stopPolling(){
 function renderDraftPicksUI(){
   if(!activeDraft) return;
   const raceInfoEl = document.getElementById('draftRaceInfo');
-  const pickAreaEl = document.getElementById('draftPickArea');
+  let pickAreaEl   = document.getElementById('draftPickArea');
   const waitingEl  = document.getElementById('draftWaiting');
   const submitBtn  = document.getElementById('submitPicksBtn');
   const dupErr     = document.getElementById('dupError');
@@ -1910,21 +1910,25 @@ function renderDraftPicksUI(){
       </div>`;
     });
 
-    if(pickAreaEl) pickAreaEl.innerHTML = progressHtml + `
-      <div class="section-lbl"><span style="color:${cols[myIdentity]}">Your picks (${turn.slots.length} driver${turn.slots.length>1?'s':''})</span></div>
-      ${slotsHtml}`;
-
-    // Wire up triggers
-    turn.slots.forEach(si=>{
-      const btn = document.querySelector(`[data-slot="${si}"]`);
-      if(!btn) return;
-      btn.addEventListener('click',()=>{
+    if(pickAreaEl){
+      pickAreaEl.innerHTML = progressHtml + `
+        <div class="section-lbl"><span style="color:${cols[myIdentity]}">Your picks (${turn.slots.length} driver${turn.slots.length>1?'s':''})</span></div>
+        ${slotsHtml}`;
+      // Clone node to remove any previous listeners, then re-add via delegation
+      const fresh = pickAreaEl.cloneNode(true);
+      pickAreaEl.parentNode.replaceChild(fresh, pickAreaEl);
+      pickAreaEl = fresh; // update reference
+      fresh.addEventListener('click', e=>{
+        const btn = e.target.closest('[data-slot]');
+        if(!btn) return;
+        const si = parseInt(btn.dataset.slot);
+        if(!turn.slots.includes(si)) return;
         openPicker(si, myDraftPicks[si]||'', (name)=>{
           myDraftPicks[si] = name;
-          renderDraftPicksUI(); // re-render to update slot display
+          renderDraftPicksUI();
         });
       });
-    });
+    }
 
     if(submitBtn){ submitBtn.style.display='block'; submitBtn.textContent='Submit My Picks'; }
     if(waitingEl){ waitingEl.innerHTML=''; waitingEl.style.display='none'; }
