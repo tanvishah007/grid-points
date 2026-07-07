@@ -507,21 +507,11 @@ main{padding:14px 14px 90px;max-width:720px;margin:0 auto;}
     <div class="last-pick-note" id="lastPickNote"></div>
     <div class="restriction-banner" id="restrictionBanner"></div>
 
-    <!-- Step 1: Race setup (anyone can start) -->
-    <div id="draftStep-setup">
+    <!-- PREDICTIONS — always visible, independent of draft state -->
+    <div id="predictionsCard" style="display:none;">
       <div class="card">
-        <div class="field" style="margin-bottom:12px;">
-          <label>Grand Prix</label>
-          <select id="raceSelect"></select>
-        </div>
-        <div class="note" style="color:var(--faint);">Sprint races use 8-7-6-5-4-3-2-1 points for P1-P8.</div>
-      </div>
-
-      <div class="card" id="predictionsCard" style="display:none;">
-        <div class="card-head" style="margin-bottom:8px;">&#127919; Race winner predictions <span style="font-size:9px;background:rgba(216,154,28,.2);color:var(--amber);padding:2px 7px;border-radius:10px;margin-left:6px;letter-spacing:.5px;">+5 PTS IF CORRECT</span></div>
-        <div class="note" style="margin-bottom:12px;">Lock in before qualifying. Each player submits independently — same driver allowed.</div>
-
-        <!-- My prediction -->
+        <div class="card-head" style="margin-bottom:8px;">&#127919; Race winner prediction <span style="font-size:9px;background:rgba(216,154,28,.2);color:var(--amber);padding:2px 7px;border-radius:10px;margin-left:6px;letter-spacing:.5px;">+5 PTS IF CORRECT</span></div>
+        <div class="note" style="margin-bottom:12px;">Submit before qualifying. Independent — same driver allowed for both.</div>
         <div class="field" style="margin-bottom:10px;">
           <label id="myPredLabel">My prediction</label>
           <button type="button" class="driver-trigger" id="myPredTrigger">
@@ -530,12 +520,21 @@ main{padding:14px 14px 90px;max-width:720px;margin:0 auto;}
           </button>
           <input type="hidden" id="myPredVal">
         </div>
-        <button class="submit-btn" id="submitPredBtn" style="margin-bottom:14px;background:var(--amber);font-size:12px;padding:11px;">Submit prediction</button>
-
-        <!-- Other player's prediction (read-only) -->
-        <div style="border-top:1px solid var(--line);padding-top:12px;">
+        <button class="submit-btn" id="submitPredBtn" style="margin-bottom:12px;background:var(--amber);font-size:12px;padding:11px;">Submit prediction</button>
+        <div style="border-top:1px solid var(--line);padding-top:10px;">
           <div id="otherPredDisplay" style="font-size:12px;color:var(--faint);">&#8230; waiting for other player's prediction</div>
         </div>
+      </div>
+    </div>
+
+    <!-- Step 1: Race setup -->
+    <div id="draftStep-setup">
+      <div class="card">
+        <div class="field" style="margin-bottom:12px;">
+          <label>Grand Prix</label>
+          <select id="raceSelect"></select>
+        </div>
+        <div class="note" style="color:var(--faint);">Sprint races use 8-7-6-5-4-3-2-1 points for P1-P8.</div>
       </div>
 
       <div class="card">
@@ -547,7 +546,7 @@ main{padding:14px 14px 90px;max-width:720px;margin:0 auto;}
       <button class="submit-btn" id="startDraftBtn">Start Draft</button>
     </div>
 
-    <!-- Step 2: Active draft — shows your slots or waiting screen -->
+    <!-- Step 2: Active draft -->
     <div id="draftStep-picks" style="display:none;">
       <div class="card" id="draftRaceInfo"></div>
       <div id="draftPickArea"></div>
@@ -1785,6 +1784,7 @@ function setPredictionValues(preds){
   renderPredCard(raceSelect?.value||'', preds);
 }
 
+
 /* ============================================================
    PICK FIRST
 ============================================================ */
@@ -1854,6 +1854,10 @@ async function checkActiveDraft(){
       showDraftStep('picks');
       renderDraftPicksUI();
       startPolling();
+      // Show predictions for this race
+      const predCard=document.getElementById('predictionsCard');
+      if(predCard && RACE_ROUND[activeDraft.race_name]>=9) predCard.style.display='block';
+      loadPredictions(activeDraft.race_name);
     } else {
       showDraftStep('setup');
       stopPolling();
@@ -1910,6 +1914,8 @@ function renderDraftPicksUI(){
   const submitBtn  = document.getElementById('submitPicksBtn');
   const dupErr     = document.getElementById('dupError');
   if(dupErr) dupErr.classList.remove('show');
+
+  // Predictions are handled by the persistent card above
 
   const order = DRAFT_ORDER_TEMPLATE(activeDraft.first_picker);
   const picks = activeDraft.picks || [];
