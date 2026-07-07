@@ -424,6 +424,7 @@ main{padding:14px 14px 90px;max-width:720px;margin:0 auto;}
   <div class="stripe"></div>
   <h1 class="f">Grid Points</h1>
   <div class="badge">2026 SEASON</div>
+  <button id="settingsBtn" style="background:none;border:none;color:var(--faint);font-size:18px;cursor:pointer;padding:4px;margin-left:6px;line-height:1;" title="Settings">⚙️</button>
   <!-- Watermark car SVG -->
   <svg class="car-watermark" viewBox="0 0 480 110" xmlns="http://www.w3.org/2000/svg">
     <rect x="20" y="28" width="12" height="30" fill="#E10600"/>
@@ -591,6 +592,26 @@ main{padding:14px 14px 90px;max-width:720px;margin:0 auto;}
 <!-- TOAST -->
 <div id="toast" style="position:fixed;bottom:calc(env(safe-area-inset-bottom)+16px);left:50%;transform:translateX(-50%);background:#1F1F23;border:1px solid #2C2C31;color:#F5F5F4;padding:10px 18px;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;z-index:400;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap;max-width:90vw;"></div>
 
+<!-- SETTINGS SHEET -->
+<div class="picker-overlay" id="settingsOverlay">
+  <div class="picker-sheet" style="max-height:50vh;">
+    <div class="picker-handle-row">
+      <div style="width:24px;"></div>
+      <div class="picker-title">Settings</div>
+      <button class="picker-close" id="settingsClose">✕</button>
+    </div>
+    <div style="padding:0 16px 24px;">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--faint);margin-bottom:12px;">Who is this device?</div>
+      <div style="font-size:12px;color:var(--gray);margin-bottom:14px;line-height:1.6;">This is stored on your device. Change it if you're logging in as the other player.</div>
+      <div style="display:flex;gap:10px;">
+        <button id="settingsIdentity0" style="flex:1;padding:12px;border-radius:6px;border:2px solid var(--line);background:var(--panel2);color:var(--gray);font-weight:700;font-size:14px;cursor:pointer;font-family:'Inter',sans-serif;transition:all .15s;">Tanvi</button>
+        <button id="settingsIdentity1" style="flex:1;padding:12px;border-radius:6px;border:2px solid var(--line);background:var(--panel2);color:var(--gray);font-weight:700;font-size:14px;cursor:pointer;font-family:'Inter',sans-serif;transition:all .15s;">Rushabh</button>
+      </div>
+      <div id="settingsIdentityNote" style="font-size:11px;color:var(--faint);margin-top:10px;text-align:center;"></div>
+    </div>
+  </div>
+</div>
+
 <!-- DRIVER PICKER OVERLAY (shared, one instance) -->
 <div class="picker-overlay" id="pickerOverlay">
   <div class="picker-sheet" id="pickerSheet">
@@ -654,7 +675,11 @@ const RACES = [
 ];
 const RACE_DATE={}, RACE_ROUND={}, RACE_IS_SPRINT={};
 RACES.forEach(r=>{RACE_DATE[r.name]=r.date;RACE_ROUND[r.name]=r.round;RACE_IS_SPRINT[r.name]=r.isSprint;});
-const PLAYABLE_RACES=RACES.filter(r=>r.round>=6);
+// Start from British Grand Prix (round 9, main race only — Sprint excluded)
+// Monaco, Barcelona, Austria (rounds 6-8) and British Sprint are excluded
+const PLAYABLE_RACES=RACES.filter(r=>
+  r.round>9 || (r.round===9 && !r.isSprint)
+);
 
 const TRACK_FACTS = {
   "Australian Grand Prix":[
@@ -963,7 +988,7 @@ document.querySelectorAll('nav.tabs button').forEach(btn=>{
     });
     if(btn.dataset.tab==='standings') renderStandings();
     if(btn.dataset.tab==='history') renderHistory();
-    if(btn.dataset.tab==='add'){if(!editingId) renderAutoFirstPicker(); fetchTop3();}
+    if(btn.dataset.tab==='add'){if(!editingId) renderAutoFirstPicker(); fetchTop3(); populateRaceSelect();}
   });
 });
 
@@ -1611,6 +1636,48 @@ function setIdentity(idx){
 // Wire identity buttons — must use addEventListener since setIdentity is inside IIFE
 document.getElementById('identityBtn0') && document.getElementById('identityBtn0').addEventListener('click', ()=>setIdentity(0));
 document.getElementById('identityBtn1') && document.getElementById('identityBtn1').addEventListener('click', ()=>setIdentity(1));
+
+/* ============================================================
+   SETTINGS
+============================================================ */
+function updateSettingsUI(){
+  const btn0 = document.getElementById('settingsIdentity0');
+  const btn1 = document.getElementById('settingsIdentity1');
+  const note = document.getElementById('settingsIdentityNote');
+  if(!btn0||!btn1) return;
+  const isT = myIdentity===0, isR = myIdentity===1;
+  btn0.style.borderColor = isT ? 'var(--p1)' : 'var(--line)';
+  btn0.style.color = isT ? 'var(--p1)' : 'var(--gray)';
+  btn0.style.background = isT ? 'rgba(225,6,0,.08)' : 'var(--panel2)';
+  btn1.style.borderColor = isR ? 'var(--p2)' : 'var(--line)';
+  btn1.style.color = isR ? 'var(--p2)' : 'var(--gray)';
+  btn1.style.background = isR ? 'rgba(46,143,224,.08)' : 'var(--panel2)';
+  if(note) note.textContent = myIdentity>=0 ? `Currently set to: ${myIdentity===0?'Tanvi':'Rushabh'}` : 'Not set';
+}
+
+document.getElementById('settingsBtn').addEventListener('click', ()=>{
+  updateSettingsUI();
+  document.getElementById('settingsOverlay').classList.add('open');
+});
+document.getElementById('settingsClose').addEventListener('click', ()=>{
+  document.getElementById('settingsOverlay').classList.remove('open');
+});
+document.getElementById('settingsOverlay').addEventListener('click', e=>{
+  if(e.target===document.getElementById('settingsOverlay'))
+    document.getElementById('settingsOverlay').classList.remove('open');
+});
+document.getElementById('settingsIdentity0').addEventListener('click', ()=>{
+  myIdentity=0; localStorage.setItem('gp_identity','0');
+  updateSettingsUI();
+  showDraftUI();
+  showToast('Switched to Tanvi');
+});
+document.getElementById('settingsIdentity1').addEventListener('click', ()=>{
+  myIdentity=1; localStorage.setItem('gp_identity','1');
+  updateSettingsUI();
+  showDraftUI();
+  showToast('Switched to Rushabh');
+});
 
 function showIdentityPrompt(){
   document.getElementById('identityPrompt').style.display = 'block';
