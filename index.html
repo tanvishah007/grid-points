@@ -519,22 +519,22 @@ main{padding:14px 14px 90px;max-width:720px;margin:0 auto;}
 
       <div class="card" id="predictionsCard" style="display:none;">
         <div class="card-head" style="margin-bottom:8px;">&#127919; Race winner predictions <span style="font-size:9px;background:rgba(216,154,28,.2);color:var(--amber);padding:2px 7px;border-radius:10px;margin-left:6px;letter-spacing:.5px;">+5 PTS IF CORRECT</span></div>
-        <div class="note" style="margin-bottom:12px;">Lock in before qualifying. Same driver allowed for both.</div>
+        <div class="note" style="margin-bottom:12px;">Lock in before qualifying. Each player submits independently — same driver allowed.</div>
+
+        <!-- My prediction -->
         <div class="field" style="margin-bottom:10px;">
-          <label>Tanvi&#8217;s prediction</label>
-          <button type="button" class="driver-trigger" id="predTrigger0">
+          <label id="myPredLabel">My prediction</label>
+          <button type="button" class="driver-trigger" id="myPredTrigger">
             <span class="trigger-text" style="color:var(--faint);">Select predicted winner&#8230;</span>
             <span class="trigger-arrow">&#9662;</span>
           </button>
-          <input type="hidden" id="predVal0">
+          <input type="hidden" id="myPredVal">
         </div>
-        <div class="field" style="margin-bottom:0;">
-          <label>Rushabh&#8217;s prediction</label>
-          <button type="button" class="driver-trigger" id="predTrigger1">
-            <span class="trigger-text" style="color:var(--faint);">Select predicted winner&#8230;</span>
-            <span class="trigger-arrow">&#9662;</span>
-          </button>
-          <input type="hidden" id="predVal1">
+        <button class="submit-btn" id="submitPredBtn" style="margin-bottom:14px;background:var(--amber);font-size:12px;padding:11px;">Submit prediction</button>
+
+        <!-- Other player's prediction (read-only) -->
+        <div style="border-top:1px solid var(--line);padding-top:12px;">
+          <div id="otherPredDisplay" style="font-size:12px;color:var(--faint);">&#8230; waiting for other player's prediction</div>
         </div>
       </div>
 
@@ -1663,29 +1663,126 @@ raceSelect && raceSelect.addEventListener('change',()=>{
   const r=RACES.find(x=>x.name===raceSelect.value);
   const predCard=document.getElementById('predictionsCard');
   if(predCard) predCard.style.display=(r&&r.round>=9)?'block':'none';
+  stopPredPolling();
   renderRestrictionBanner();
+  if(r && r.round>=9) loadPredictions(r.name);
+  else renderPredCard('', ['','']);
 });
 
 /* ============================================================
-   PREDICTIONS
+   PREDICTIONS — independent per player, stored in draft_sessions
 ============================================================ */
-function setupPredTrigger(tid,hid){
-  const t=document.getElementById(tid), h=document.getElementById(hid);
-  if(!t) return;
-  t.addEventListener('click',()=>openPicker(-1,h.value,(name)=>{h.value=name;t.querySelector('.trigger-text').textContent=name;t.querySelector('.trigger-text').style.color='';}));
-}
-setupPredTrigger('predTrigger0','predVal0');
-setupPredTrigger('predTrigger1','predVal1');
+let predPollTimer = null;
 
-function setPredictionValues(preds){
-  [0,1].forEach(i=>{
-    const v=preds?.[i]||'';
-    const t=document.getElementById('predTrigger'+i), h=document.getElementById('predVal'+i);
-    if(!t||!h) return;
-    h.value=v;
-    const txt=t.querySelector('.trigger-text');
-    txt.textContent=v||'Select predicted winner…'; txt.style.color=v?'':'var(--faint)';
+// Wire my prediction trigger
+const myPredTrigger = document.getElementById('myPredTrigger');
+const myPredVal     = document.getElementById('myPredVal');
+if(myPredTrigger){
+  myPredTrigger.addEventListener('click',()=>{
+    openPicker(-1, myPredVal.value, (name)=>{
+      myPredVal.value = name;
+      myPredTrigger.querySelector('.trigger-text').textContent = name;
+      myPredTrigger.querySelector('.trigger-text').style.color = '';
+      myPredTrigger.classList.add('has-value');
+    });
   });
+}
+
+// Submit my prediction
+document.getElementById('submitPredBtn') && document.getElementById('submitPredBtn').addEventListener('click', async ()=>{
+  const rn = raceSelect.value;
+  const pick = myPredVal?.value||'';
+  if(!rn){ alert('Select a Grand Prix first.'); return; }
+  if(!pick){ alert('Select a predicted race winner first.'); return; }
+
+  const btn = document.getElementById('submitPredBtn');
+  btn.disabled = true; btn.textContent = 'Saving\u2026';
+
+  try{
+    // Load or create a prediction record in draft_sessions using race name as key
+    const predKey = rn + '__pred';
+    let rows = await sbGet(`draft_sessions?id=eq.${encodeURIComponent(predKey)}`);
+    let preds = rows.length ? (rows[0].predictions||['','']) : ['',''];
+    preds = [...preds]; // copy
+    preds[myIdentity] = pick;
+    await sbPost('draft_sessions', {
+      id: predKey,
+      race_name: rn,
+      status: 'predictions',
+      predictions: preds,
+      picks: [], first_picker: 0
+    });
+    renderPredCard(rn, preds);
+    btn.textContent = 'Saved \u2713';
+    btn.style.background = 'var(--green)';
+    setTimeout(()=>{ btn.textContent='Change prediction'; btn.style.background=''; btn.disabled=false; }, 1500);
+    startPredPolling(predKey, rn);
+  }catch(e){
+    showToast('Could not save prediction.');
+    btn.disabled=false; btn.textContent='Submit prediction';
+  }
+});
+
+function renderPredCard(raceName, preds){
+  const names = ['Tanvi','Rushabh'];
+  const myPred = preds[myIdentity]||'';
+  const otherPred = preds[1-myIdentity]||'';
+  const otherName = names[1-myIdentity];
+
+  // Update my trigger
+  if(myPredVal) myPredVal.value = myPred;
+  if(myPredTrigger){
+    const txt = myPredTrigger.querySelector('.trigger-text');
+    if(txt){ txt.textContent = myPred||'Select predicted winner\u2026'; txt.style.color = myPred?'':'var(--faint)'; }
+    myPredTrigger.classList.toggle('has-value', !!myPred);
+  }
+
+  // Update other player display
+  const otherEl = document.getElementById('otherPredDisplay');
+  if(otherEl){
+    if(otherPred){
+      otherEl.innerHTML = `<b style="color:var(--white)">${esc(otherName)}</b> predicts: <b style="color:var(--amber)">${esc(otherPred)}</b>`;
+    } else {
+      otherEl.innerHTML = `\u2026 waiting for ${esc(otherName)}'s prediction`;
+    }
+  }
+
+  // Update label
+  const lbl = document.getElementById('myPredLabel');
+  if(lbl) lbl.textContent = names[myIdentity] + "'s prediction";
+}
+
+async function loadPredictions(raceName){
+  if(!raceName) return;
+  const predKey = raceName + '__pred';
+  try{
+    const rows = await sbGet(`draft_sessions?id=eq.${encodeURIComponent(predKey)}`);
+    const preds = rows.length ? (rows[0].predictions||['','']) : ['',''];
+    renderPredCard(raceName, preds);
+    startPredPolling(predKey, raceName);
+  }catch(e){}
+}
+
+function startPredPolling(predKey, raceName){
+  if(predPollTimer) clearInterval(predPollTimer);
+  predPollTimer = setInterval(async ()=>{
+    try{
+      const rows = await sbGet(`draft_sessions?id=eq.${encodeURIComponent(predKey)}`);
+      const preds = rows.length ? (rows[0].predictions||['','']) : ['',''];
+      renderPredCard(raceName, preds);
+    }catch(e){}
+  }, 5000);
+}
+
+function stopPredPolling(){
+  if(predPollTimer){ clearInterval(predPollTimer); predPollTimer=null; }
+}
+
+// Legacy — keep for draft session compatibility
+function setPredictionValues(preds){
+  if(!preds) return;
+  if(myPredVal) myPredVal.value = preds[myIdentity]||'';
+  renderPredCard(raceSelect?.value||'', preds);
 }
 
 /* ============================================================
@@ -2024,10 +2121,15 @@ document.getElementById('startDraftBtn') && document.getElementById('startDraftB
     // No restriction here — restriction is checked per-pick in the picker
   }
 
-  const predictions = [
-    document.getElementById('predVal0')?.value||'',
-    document.getElementById('predVal1')?.value||''
-  ];
+  // Load predictions from pred record
+  let predictions = ['',''];
+  if(RACE_ROUND[rn]>=9){
+    try{
+      const predKey = rn + '__pred';
+      const predRows = await sbGet(`draft_sessions?id=eq.${encodeURIComponent(predKey)}`);
+      if(predRows.length) predictions = predRows[0].predictions||['',''];
+    }catch(e){}
+  }
 
   const firstPicker = getAutoFirstPicker().player;
   const date = RACE_DATE[rn]||todayIso();
