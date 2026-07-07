@@ -343,14 +343,7 @@ main{padding:14px 14px 90px;max-width:720px;margin:0 auto;}
 .circuit-edge{font-size:11px;color:var(--faint);margin-top:8px;}
 .circuit-edge b{color:var(--white);}
 
-/* JOKER */
-.joker-card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin-bottom:14px;}
-.joker-badge{display:inline-block;font-size:9px;background:linear-gradient(135deg,#7B2FBE,#C026D3);color:#fff;font-weight:800;padding:2px 7px;border-radius:3px;letter-spacing:.5px;text-transform:uppercase;margin-left:6px;vertical-align:middle;}
-.joker-toggle{display:flex;align-items:center;gap:12px;padding:8px 0;}
-.joker-toggle label{font-size:13px;font-weight:600;cursor:pointer;flex:1;}
-.joker-toggle input[type=checkbox]{width:18px;height:18px;accent-color:#9333EA;cursor:pointer;}
-.joker-used{font-size:12px;color:var(--faint);padding:6px 0;}
-.joker-used b{color:var(--white);}
+
 
 /* DRAFT WAITING */
 .waiting-card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:28px 20px;text-align:center;margin-top:14px;}
@@ -550,16 +543,6 @@ main{padding:14px 14px 90px;max-width:720px;margin:0 auto;}
           <div id="pickFirstDisplay" style="font-size:15px;font-weight:700;padding:11px 12px;background:var(--panel2);border:1px solid var(--line);border-radius:6px;"></div>
         </div>
       </div>
-      <div id="jokerCard" style="display:none;"><!-- rendered by JS --></div>
-      <div class="card" style="background:rgba(147,51,234,.06);border-color:rgba(147,51,234,.25);">
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#9333EA;margin-bottom:10px;">🃏 Joker Card — How it works</div>
-        <div style="font-size:12px;color:var(--gray);line-height:1.7;">
-          Each player gets <b style="color:var(--white);">one joker for the entire season</b>. Declare it before the draft starts on any race you choose.<br><br>
-          If you use your joker, <b style="color:var(--white);">your points for that race are doubled</b> — so a 25-point race becomes 50. Your opponent's points are unaffected.<br><br>
-          Once used, it's gone. Choose wisely — a street circuit, a race where a top driver is likely to win, or a race where you feel confident in your picks.
-        </div>
-      </div>
-
       <button class="submit-btn" id="startDraftBtn">Start Draft</button>
     </div>
 
@@ -890,11 +873,6 @@ async function loadFromDB(){
       isSprint: r.is_sprint || RACE_IS_SPRINT[r.name] || false, unlocked: r.unlocked || false,
       predictions: r.predictions || ['','']
     }));
-    // Load jokers
-    try{
-      const jrows = await sbGet('jokers?id=eq.1');
-      if(jrows.length){ jokers[0]=jrows[0].p0_race||null; jokers[1]=jrows[0].p1_race||null; }
-    }catch(e){ /* jokers table may not exist yet */ }
   } catch(e){
     console.error('Load failed:', e);
     showToast('Could not load data — check connection.');
@@ -903,11 +881,6 @@ async function loadFromDB(){
   updateHeadings(); renderStandings(); renderHistory(); populateRaceSelect();
 }
 
-async function saveJokersToDB(){
-  try{
-    await sbPost('jokers', {id:1, p0_race:jokers[0]||null, p1_race:jokers[1]||null});
-  }catch(e){ showToast('Could not save joker.'); }
-}
 
 async function saveRaceToDB(race){
   try{
@@ -946,7 +919,6 @@ let pickedFirst = 0;
 let restrictedTeams = [];
 let restrictionStatus = 'idle';
 let draftPicks = ['','','','','',''];
-let jokers = {0: null, 1: null}; // race name each player used joker on, null = unused
 
 /* ============================================================
    HELPERS
@@ -967,9 +939,6 @@ function racePts(race){
       if(preds[1]&&preds[1]===p1Winner) base[1]+=5;
     }
   }
-  // Joker doubling — declared player gets 2× points for this race
-  if(jokers[0]===race.name) base[0]*=2;
-  if(jokers[1]===race.name) base[1]*=2;
   return base;
 }
 function totals(){
@@ -1477,37 +1446,6 @@ function getAutoFirstPicker(){
   return {player: 0, reason: 'tie', race: raceName};
 }
 
-function renderJokerCard(){
-  const el = document.getElementById('jokerCard');
-  if(!el || myIdentity < 0) return;
-  const rn = document.getElementById('raceSelect')?.value;
-  if(!rn){ el.style.display='none'; return; }
-  el.style.display = 'block';
-  const myJoker = jokers[myIdentity];
-  const otherJoker = jokers[1-myIdentity];
-  const myName = myIdentity===0?'Tanvi':'Rushabh';
-  const otherName = myIdentity===0?'Rushabh':'Tanvi';
-  const jokerUsedOnThis = myJoker === rn;
-  const jokerUsedElsewhere = myJoker && myJoker !== rn;
-  let html = `<div class="joker-card">
-    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--faint);margin-bottom:10px;">🃏 Joker Race <span class="joker-badge">×2 PTS</span></div>`;
-  if(jokerUsedElsewhere){
-    html += `<div class="joker-used">You already used your joker on <b>${esc(myJoker.replace(' Grand Prix',''))}</b>.</div>`;
-  } else {
-    html += `<div class="joker-toggle">
-      <label for="jokerCheck${myIdentity}">${myName}'s joker — double my points this race</label>
-      <input type="checkbox" id="jokerCheck${myIdentity}" ${jokerUsedOnThis?'checked':''}>
-    </div>`;
-  }
-  if(otherJoker){
-    html += `<div class="joker-used" style="margin-top:6px;">${esc(otherName)} used their joker on <b>${esc(otherJoker.replace(' Grand Prix',''))}</b>${otherJoker===rn?' <span style="color:#9333EA">← this race!</span>':''}.</div>`;
-  }
-  html += '</div>';
-  el.innerHTML = html;
-  const chk = document.getElementById('jokerCheck'+myIdentity);
-  if(chk) chk.addEventListener('change', ()=>{ /* declared at start draft time */ });
-}
-
 function renderAutoFirstPicker(){
   const el = document.getElementById('lastPickNote');
   if(!el) return;
@@ -1693,7 +1631,6 @@ function showDraftUI(){
   renderAutoFirstPicker();
   fetchTop3();
   populateRaceSelect();
-  renderJokerCard();
   checkActiveDraft();
 }
 
@@ -1716,7 +1653,6 @@ raceSelect && raceSelect.addEventListener('change',()=>{
   const predCard=document.getElementById('predictionsCard');
   if(predCard) predCard.style.display=(r&&r.round>=9)?'block':'none';
   renderRestrictionBanner();
-  renderJokerCard();
 });
 
 /* ============================================================
@@ -1889,9 +1825,9 @@ function renderDraftPicksUI(){
   }
 
   if(turn.player === myIdentity){
-    // My turn — show my slots
-    myDraftPicks = {};
+    // Initialise slots from session picks — but preserve any picks already made this turn
     turn.slots.forEach(si=>{
+      if(myDraftPicks[si]) return; // already set this turn, keep it
       const existing = picks.find(p=>p.slot===si);
       if(existing) myDraftPicks[si] = existing.name;
     });
@@ -1922,7 +1858,8 @@ function renderDraftPicksUI(){
     if(submitBtn){ submitBtn.style.display='block'; submitBtn.textContent='Submit My Picks'; }
     if(waitingEl){ waitingEl.innerHTML=''; waitingEl.style.display='none'; }
   } else {
-    // Other person's turn
+    // Other person's turn — clear my picks so next turn starts fresh
+    myDraftPicks = {};
     const otherName = names[turn.player];
     if(pickAreaEl) pickAreaEl.innerHTML = progressHtml;
     if(submitBtn) submitBtn.style.display='none';
@@ -2065,16 +2002,6 @@ document.getElementById('startDraftBtn') && document.getElementById('startDraftB
   const btn = document.getElementById('startDraftBtn');
   btn.disabled=true; btn.textContent='Starting\u2026';
 
-  // Save joker declaration if checked
-  const jokerChk = document.getElementById('jokerCheck'+myIdentity);
-  if(jokerChk && jokerChk.checked && !jokers[myIdentity]){
-    jokers[myIdentity] = rn;
-    await saveJokersToDB();
-  } else if(jokerChk && !jokerChk.checked && jokers[myIdentity]===rn){
-    jokers[myIdentity] = null;
-    await saveJokersToDB();
-  }
-
   try{
     await saveDraftSession(session);
     activeDraft = session;
@@ -2213,7 +2140,6 @@ function renderHistory(){
     const sprintTag=isSprint?`<span class="sprint-badge">🔥 Sprint</span>`:'';
     const lockedTag=isLocked?`<span class="locked-tag">&#128274;</span>`:'';
     const pfName=race.pickedFirst===0?n0:race.pickedFirst===1?n1:null;
-    const joker0 = jokers[0]===race.name, joker1 = jokers[1]===race.name;
     function driverLines(picks, pidx){
       if(!picks.length) return `<div style="font-size:12px;color:var(--faint);padding:6px 0;">No picks entered</div>`;
       if(!picks.length) return `<div style="font-size:12px;color:var(--faint);padding:6px 0;">No picks entered</div>`;
@@ -2238,8 +2164,8 @@ function renderHistory(){
       </div>
       <div class="race-card-body" id="body-${race.id}">
         ${pfName?`<div class="picked-first-line">${esc(pfName)} picked first</div>`:''}
-        <div class="person-block"><div class="pb-head c1">${esc(n0)}${joker0?'<span class="joker-badge" style="margin-left:6px;">🃏 ×2</span>':''}<span class="total">${p0} pts</span></div>${driverLines(race.picks[0],0)}</div>
-        <div class="person-block"><div class="pb-head c2">${esc(n1)}${joker1?'<span class="joker-badge" style="margin-left:6px;">🃏 ×2</span>':''}<span class="total">${p1} pts</span></div>${driverLines(race.picks[1],1)}</div>
+        <div class="person-block"><div class="pb-head c1">${esc(n0)}<span class="total">${p0} pts</span></div>${driverLines(race.picks[0],0)}</div>
+        <div class="person-block"><div class="pb-head c2">${esc(n1)}<span class="total">${p1} pts</span></div>${driverLines(race.picks[1],1)}</div>
         ${(p0!==p1&&(p0>0||p1>0))?`<div class="margin-line">${p0>p1?esc(n0):esc(n1)} won this race by <b>${margin} points</b></div>`:''}
         ${renderPredictionLines(race,n0,n1)}
         ${actionsHtml}
