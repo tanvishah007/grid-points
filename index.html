@@ -1365,18 +1365,47 @@ function renderTrophy(n0,n1,t0,t1){
 ============================================================ */
 function renderPredictionLines(race,n0,n1){
   if((RACE_ROUND[race.name]||0)<9) return '';
-  const preds=race.predictions||['',''];
+  const preds = race.predictions||['',''];
   if(!preds[0]&&!preds[1]) return '';
-  const p1Winner=[...race.picks[0],...race.picks[1]].find(d=>String(d.pos)==='1')?.name||null;
-  function line(pred,name){
-    if(!pred) return '';
-    const correct=p1Winner&&pred===p1Winner;
-    const cls=p1Winner?(correct?'pred-correct':'pred-wrong'):'';
-    const icon=p1Winner?(correct?'&#10003; +5 pts &#127881;':'&#10007;'):'&#9203;';
-    return `<div class="pred-line ${cls}">${esc(name)} predicted: <b>${esc(pred)}</b> ${icon}</div>`;
+  const p1Winner = [...race.picks[0],...race.picks[1]].find(d=>String(d.pos)==='1')?.name||null;
+  const isLocked = race.date && race.date < todayIso() && !race.unlocked;
+
+  function predChip(pred, col){
+    if(!pred) return '<div style="font-size:12px;color:var(--faint);font-style:italic;">No prediction</div>';
+    const correct = p1Winner && pred===p1Winner;
+    const wrong   = p1Winner && pred!==p1Winner;
+    const icon    = correct ? ' ✓ <span style="color:var(--green)">+5 pts</span>' : wrong ? ' <span style="color:var(--faint)">✗</span>' : ' <span style="color:var(--faint)">⏳</span>';
+    const textCol = correct ? 'var(--green)' : wrong ? 'var(--faint)' : 'var(--white)';
+    return '<div style="font-size:13px;font-weight:600;color:'+textCol+'">'+esc(pred)+icon+'</div>';
   }
-  return `<div>${line(preds[0],n0)}${line(preds[1],n1)}</div>`;
+
+  const allDrivers = [...race.picks[0],...race.picks[1]].filter(d=>d.name);
+  const opts0 = '<option value="">No prediction</option>'+allDrivers.map(d=>'<option value="'+esc(d.name)+'" '+(preds[0]===d.name?'selected':'')+'>'+esc(d.name)+'</option>').join('');
+  const opts1 = '<option value="">No prediction</option>'+allDrivers.map(d=>'<option value="'+esc(d.name)+'" '+(preds[1]===d.name?'selected':'')+'>'+esc(d.name)+'</option>').join('');
+
+  const editPanel = isLocked ? '' :
+    '<div id="pred-edit-'+race.id+'" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--line);">'
+    +'<div style="font-size:10px;color:var(--faint);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Edit predictions</div>'
+    +'<div style="display:flex;gap:8px;margin-bottom:8px;">'
+    +'<div style="flex:1;"><div style="font-size:9px;color:var(--p1);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">'+esc(n0)+'</div>'
+    +'<select id="pred0-'+race.id+'" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--white);padding:8px;border-radius:6px;font-size:13px;">'+opts0+'</select></div>'
+    +'<div style="flex:1;"><div style="font-size:9px;color:var(--p2);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">'+esc(n1)+'</div>'
+    +'<select id="pred1-'+race.id+'" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--white);padding:8px;border-radius:6px;font-size:13px;">'+opts1+'</select></div>'
+    +'</div>'
+    +'<button class="save-pred-btn" data-race="'+race.id+'" style="width:100%;background:var(--amber);color:#000;border:none;padding:9px;border-radius:6px;font-weight:700;font-size:12px;text-transform:uppercase;cursor:pointer;">Save predictions</button>'
+    +'</div>'
+    +'<button class="edit-pred-btn" data-race="'+race.id+'" style="margin-top:6px;background:none;border:1px solid var(--line);color:var(--faint);padding:5px 10px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase;cursor:pointer;">Edit predictions</button>';
+
+  return '<div style="border-top:1px solid var(--line);margin-top:8px;padding-top:10px;">'
+    +'<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:var(--faint);margin-bottom:8px;">🎯 Race winner predictions</div>'
+    +'<div style="display:flex;gap:12px;">'
+    +'<div style="flex:1;"><div style="font-size:9px;color:var(--p1);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">'+esc(n0)+'</div>'+predChip(preds[0],'var(--p1)')+'</div>'
+    +'<div style="flex:1;"><div style="font-size:9px;color:var(--p2);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">'+esc(n1)+'</div>'+predChip(preds[1],'var(--p2)')+'</div>'
+    +'</div>'
+    +editPanel
+    +'</div>';
 }
+
 /* ============================================================
    REMINDER BANNERS (Standings)
 ============================================================ */
@@ -2435,10 +2464,7 @@ function renderHistory(){
   const list=document.getElementById('historyList');
   const n0='Tanvi', n1='Rushabh';
   if(!state.races.length){
-    list.innerHTML=`<div class="empty-state">
-      <svg viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg">${[...Array(8)].map((_,i)=>[...Array(8)].map((_,j)=>`<rect x="${j*7}" y="${i*7}" width="7" height="7" fill="${(i+j)%2===0?'#fff':'#2C2C31'}"/>`).join('')).join('')}</svg>
-      <p>No races yet. Head to <b>Log Race</b> to get started.</p>
-    </div>`;
+    list.innerHTML='<div class="empty-state"><p>No races yet. Head to <b>Log Race</b> to get started.</p></div>';
     return;
   }
   const today=todayIso();
@@ -2450,49 +2476,85 @@ function renderHistory(){
     const isLocked=isPast&&!race.unlocked;
     const margin=Math.abs(p0-p1);
     let wtag;
-    if(p0===p1&&p0===0) wtag=`<span class="wtag tie">No results yet</span>`;
-    else if(p0===p1) wtag=`<span class="wtag tie">Tie</span>`;
-    else if(p0>p1) wtag=`<span class="wtag w1">${esc(n0)} +${margin}</span>`;
-    else wtag=`<span class="wtag w2">${esc(n1)} +${margin}</span>`;
+    if(p0===p1&&p0===0) wtag='<span class="wtag tie">No results yet</span>';
+    else if(p0===p1) wtag='<span class="wtag tie">Tie</span>';
+    else if(p0>p1) wtag='<span class="wtag w1">'+esc(n0)+' +'+margin+'</span>';
+    else wtag='<span class="wtag w2">'+esc(n1)+' +'+margin+'</span>';
     const dateFmt=race.date?new Date(race.date+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'';
-    const sprintTag=isSprint?`<span class="sprint-badge">🔥 Sprint</span>`:'';
-    const lockedTag=isLocked?`<span class="locked-tag">&#128274;</span>`:'';
+    const isSp=isSprint;
+    const sprintTag=isSp?'<span class="sprint-badge">\uD83D\uDD25 Sprint</span>':'';
+    const lockedTag=isLocked?'<span class="locked-tag">\uD83D\uDD12</span>':'';
     const pfName=race.pickedFirst===0?n0:race.pickedFirst===1?n1:null;
-    function driverLines(picks, pidx){
-      if(!picks.length) return `<div style="font-size:12px;color:var(--faint);padding:6px 0;">No picks entered</div>`;
-      if(!picks.length) return `<div style="font-size:12px;color:var(--faint);padding:6px 0;">No picks entered</div>`;
+    const round=RACE_ROUND[race.name];
+
+    function driverLines(picks){
+      if(!picks||!picks.length) return '<div style="font-size:12px;color:var(--faint);padding:6px 0;">No picks entered</div>';
       return picks.map(d=>{
         const team=DRIVER_TEAM[d.name];
         const posLabel=d.pos==='DNF'?'DNF':d.pos?'P'+d.pos:'\u2014';
-        const ptsVal=pts(d.pos,isSprint);
-        return `<div class="dline"><span class="dpos">${posLabel}</span><span class="dname">${esc(d.name||'\u2014')}${team?`<span class="dteam">${esc(team)}</span>`:''}</span><span class="dpts">${d.pos?ptsVal+' pts':''}</span></div>`;
+        const ptsVal=pts(d.pos,isSp);
+        return '<div class="dline"><span class="dpos">'+posLabel+'</span><span class="dname">'+esc(d.name||'\u2014')+(team?'<span class="dteam">'+esc(team)+'</span>':'')+'</span><span class="dpts">'+(d.pos?ptsVal+' pts':'')+'</span></div>';
       }).join('');
     }
-    const round=RACE_ROUND[race.name];
+
     const actionsHtml=isLocked
-      ?`<div class="race-actions"><button class="fetch-btn" data-fetch="${race.id}" data-round="${round||''}">&#8635; Fetch results</button><button class="unlock-btn" data-unlock="${race.id}">Unlock to edit</button></div>`
-      :`<div class="race-actions">${isPast?`<button class="fetch-btn" data-fetch="${race.id}" data-round="${round||''}">&#8635; Fetch results</button>`:''}<button class="del-btn" data-del="${race.id}">Delete</button></div>`;
-    return `<div class="race-card${isSprint?' is-sprint':''}">
-      <div class="race-card-head" data-id="${race.id}">
-        <div class="race-meta">
-          <div class="race-name-row"><span class="race-name">${esc(race.name)}</span>${sprintTag}${lockedTag}</div>
-          <div class="race-date">${dateFmt}</div>
-        </div>
-        ${wtag}<span class="chevron">&#9662;</span>
-      </div>
-      <div class="race-card-body" id="body-${race.id}">
-        ${pfName?`<div class="picked-first-line">${esc(pfName)} picked first</div>`:''}
-        <div class="person-block"><div class="pb-head c1">${esc(n0)}<span class="total">${p0} pts</span></div>${driverLines(race.picks[0],0)}</div>
-        <div class="person-block"><div class="pb-head c2">${esc(n1)}<span class="total">${p1} pts</span></div>${driverLines(race.picks[1],1)}</div>
-        ${(p0!==p1&&(p0>0||p1>0))?`<div class="margin-line">${p0>p1?esc(n0):esc(n1)} won this race by <b>${margin} points</b></div>`:''}
-        ${renderPredictionLines(race,n0,n1)}
-        ${actionsHtml}
-        <div class="fetch-status-line" id="fstatus-${race.id}"></div>
-      </div>
-    </div>`;
+      ?'<div class="race-actions"><button class="fetch-btn" data-fetch="'+race.id+'" data-round="'+(round||'')+'">&#8635; Fetch results</button><button class="unlock-btn" data-unlock="'+race.id+'">Unlock to edit</button></div>'
+      :'<div class="race-actions">'+(isPast?'<button class="fetch-btn" data-fetch="'+race.id+'" data-round="'+(round||'')+'">&#8635; Fetch results</button>':'')+'<button class="del-btn" data-del="'+race.id+'">Delete</button></div>';
+
+    return '<div class="race-card'+(isSp?' is-sprint':'')+'">'+
+      '<div class="race-card-head" data-id="'+race.id+'">'+
+        '<div class="race-meta">'+
+          '<div class="race-name-row"><span class="race-name">'+esc(race.name)+'</span>'+sprintTag+lockedTag+'</div>'+
+          '<div class="race-date">'+dateFmt+'</div>'+
+        '</div>'+
+        wtag+'<span class="chevron">&#9662;</span>'+
+      '</div>'+
+      '<div class="race-card-body" id="body-'+race.id+'">'+
+        (pfName?'<div class="picked-first-line">'+esc(pfName)+' picked first</div>':'')+
+        '<div class="person-block"><div class="pb-head c1">'+esc(n0)+'<span class="total">'+p0+' pts</span></div>'+driverLines(race.picks[0])+'</div>'+
+        '<div class="person-block"><div class="pb-head c2">'+esc(n1)+'<span class="total">'+p1+' pts</span></div>'+driverLines(race.picks[1])+'</div>'+
+        ((p0!==p1&&(p0>0||p1>0))?'<div class="margin-line">'+(p0>p1?esc(n0):esc(n1))+' won this race by <b>'+margin+' points</b></div>':'')+
+        renderPredictionLines(race,n0,n1)+
+        actionsHtml+
+        '<div class="fetch-status-line" id="fstatus-'+race.id+'"></div>'+
+      '</div>'+
+    '</div>';
   }).join('');
+
   list.querySelectorAll('.race-card-head').forEach(h=>{
-    h.addEventListener('click',()=>{const id=h.dataset.id;const body=document.getElementById('body-'+id);const chev=h.querySelector('.chevron');const open=body.classList.toggle('open');chev.classList.toggle('open',open);});
+    h.addEventListener('click',()=>{
+      const id=h.dataset.id;
+      const body=document.getElementById('body-'+id);
+      const chev=h.querySelector('.chevron');
+      const open=body.classList.toggle('open');
+      chev.classList.toggle('open',open);
+    });
+  });
+  list.querySelectorAll('.edit-pred-btn').forEach(b=>{
+    b.addEventListener('click', e=>{
+      e.stopPropagation();
+      const panel = document.getElementById('pred-edit-'+b.dataset.race);
+      if(!panel) return;
+      const open = panel.style.display !== 'none';
+      panel.style.display = open ? 'none' : 'block';
+      b.textContent = open ? 'Edit predictions' : 'Cancel';
+    });
+  });
+  list.querySelectorAll('.save-pred-btn').forEach(b=>{
+    b.addEventListener('click', async e=>{
+      e.stopPropagation();
+      const race = state.races.find(r=>r.id===b.dataset.race);
+      if(!race) return;
+      const p0 = document.getElementById('pred0-'+b.dataset.race)?.value||'';
+      const p1 = document.getElementById('pred1-'+b.dataset.race)?.value||'';
+      race.predictions = [p0,p1];
+      b.textContent='Saving\u2026'; b.disabled=true;
+      try{
+        await saveRaceToDB(race);
+        await sbPost('draft_sessions',{id:race.name+'__pred',race_name:race.name,status:'predictions',predictions:[p0,p1],picks:[],first_picker:0});
+        renderHistory(); renderStandings();
+      }catch(err){ showToast('Could not save predictions.'); b.textContent='Save predictions'; b.disabled=false; }
+    });
   });
   list.querySelectorAll('[data-del]').forEach(b=>{
     b.addEventListener('click',async e=>{
@@ -2529,7 +2591,6 @@ function renderHistory(){
     });
   });
 }
-
 /* ============================================================
    CANCEL EDIT (legacy — kept for history edit support)
 ============================================================ */
